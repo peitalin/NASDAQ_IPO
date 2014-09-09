@@ -58,15 +58,6 @@ def view_filing(filename):
     os.system("cp {0} {1}".format(filename, newfilename))
     os.system("open -a Firefox {}".format(newfilename))
 
-def testfiles(cik):
-    return glob.glob(os.path.join(BASEDIR, cik) + '/*')
-
-def test_cik(cik):
-    tf = testfiles = glob.glob(os.path.join(BASEDIR, cik) + '/*')
-    ids = [f[-16:] for f in tf]
-    return cik, tf, list(zip(ids, [get_price_range(f) for f in testfiles]))
-
-
 
 
 
@@ -117,6 +108,7 @@ def parse_sentence(sentence):
     convertible = re.compile(r"[Cc]onvertible note[s]?")
     preferred = re.compile(r"[Cc]onvertible preferred stock")
     private = re.compile(r"([Pp]rivate placement[s]?|[Ss]eries [A-Z])")
+    warrant = re.compile(r"([Ww]arrant|[Ee]xercisable)")
 
     # Check is IPO relevant paragraph
     is_an_ipo = re.compile(r"[Ii]nitial\s+[Pp]ublic\s+[Oo]ffering")
@@ -132,8 +124,11 @@ def parse_sentence(sentence):
     prices = re.compile(r'\$\d*[.]\d{0,2}')
 
     s = sentence
-    if ex_option.search(s) or convertible.search(s) or preferred.search(s) or private.search(s):
+    if any([ex_option.search(s), convertible.search(s), preferred.search(s), private.search(s)]):
         return None
+
+    # if warrant.search(s):
+    #     print("{} is a warrant IPO")
 
     if is_an_ipo.findall(s) or common_stock.findall(s) or no_public.findall(s):
         if re.findall(r'fair value', s):
@@ -179,54 +174,101 @@ def merge_price_range(cik, price_range):
 
 
 
-# def extract_NASDAQ_IPO_data_threaded(LINKS):
-#     "Multi-threaded wrapper for NSADAQ Data scraping"
-#     with ThreadPoolExecutor(max_workers=N) as exec:
-#         json_result = exec.map(YAHOOSCRAPER, [iter(LINKS)]*N)
-#         final_dict  = reduce(lambda d1, d2: dict(d1, **d2), json_result)
-#     return final_dict
+def testfiles(cik):
+    return [x for x in glob.glob(os.path.join(BASEDIR, cik) + '/*') if 'filing.ashx?' in x]
+
+def test_cik(cik):
+    tf = [x for x in glob.glob(os.path.join(BASEDIR, cik) + '/*') if 'filing.ashx?' in x]
+    ids = [f[-16:] for f in tf]
+    return cik, tf, list(zip(ids, [get_price_range(f) for f in tf]))
 
 
 
-def opening_prices(cik):
-    "Gets opening prices for IPO"
 
-    ticker = FINALJSON[cik]['Company Overview']['Proposed Symbol']
-    coname = FINALJSON[cik]['Company Overview']['Company Name']
-    status = FINALJSON[cik]['Company Overview']['Status']
-    listing_date = arrow.get(re.findall(r'\d+/\d+/\d+', status)[0], 'M/D/YYYY')
-    s = listing_date.replace(weeks=-1)
-    e = listing_date.replace(weeks=+1)
-    print(cik, ticker, coname, listing_date.date())
 
-    url = "https://au.finance.yahoo.com/q/hp"
-    query = "?s={ticker}&a={M1}&b={D1}&c={Y1}&d={M2}&e={D2}&f={Y2}&g={freq}"
-    url += query.format(ticker=ticker, freq='d',
-                        M1=s.month-1, D1=s.day, Y1=s.year,
-                        M2=e.month-1, D2=e.day, Y2=e.year)
-    # Yahoo month index starts from 0
-    headers = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
-    sess = requests.get(url)
-    html = etree.HTML(sess.text)
-    rows = html.xpath('//table[@class="yfnc_datamodoutline1"]/tr/td/table/*')
-    prices = rows[-2].xpath('.//text()')
-
-    return dict(zip(headers, prices))
 
 
 def opening_prices_list(ciks):
+
     prices_dict = {}
     for cik in ciks:
         prices_dict[cik] = opening_prices(cik)
     return prices_dict
+
+    def opening_prices(cik):
+        "Gets opening prices for IPO"
+
+        ticker = FINALJSON[cik]['Company Overview']['Proposed Symbol']
+        coname = FINALJSON[cik]['Company Overview']['Company Name']
+        status = FINALJSON[cik]['Company Overview']['Status']
+        listing_date = arrow.get(re.findall(r'\d+/\d+/\d+', status)[0], 'M/D/YYYY')
+        s = listing_date.replace(weeks=-1)
+        e = listing_date.replace(weeks=+1)
+        print(cik, ticker, coname, listing_date.date())
+
+        url = "https://au.finance.yahoo.com/q/hp"
+        query = "?s={ticker}&a={M1}&b={D1}&c={Y1}&d={M2}&e={D2}&f={Y2}&g={freq}"
+        url += query.format(ticker=ticker, freq='d',
+                            M1=s.month-1, D1=s.day, Y1=s.year,
+                            M2=e.month-1, D2=e.day, Y2=e.year)
+        # Yahoo month index starts from 0
+        headers = ['Date', 'Open', 'High', 'Low', 'Close', 'Volume', 'Adj Close']
+        sess = requests.get(url)
+        html = etree.HTML(sess.text)
+        rows = html.xpath('//table[@class="yfnc_datamodoutline1"]/tr/td/table/*')
+        if rows:
+            prices = rows[-2].xpath('.//text()')
+        else:
+            prices = ['', '', '', '', '', '', '']
+
+        return dict(zip(headers, prices))
+
+
+def opening_prices_threaded(ciks, N=20):
+    "Multi-threaded wrapper for Yahoo Opening Prices"
+    with ThreadPoolExecutor(max_workers=N) as exec:
+        json_result = exec.map(opening_prices_list, [iter(ciks)]*N)
+        final_dict  = reduce(lambda d1, d2: dict(d1, **d2), json_result)
+    return final_dict
+
+
+
+def merge_CRSP_FINALJSON():
+    # CRSP = pd.read_csv("CRSP.csv", dtype=object)
+    # pricedict = opening_prices_threaded(ciks, N=20)
+    # for cik in pricedict:
+    #     FINALJSON[cik]['Opening Prices'] = pricedict[cik]
+
+    CRSP2 = pd.read_csv("data/CRSP2_openingprices.csv", dtype=object)
+    CRSP2.set_index("CIK", inplace=True)
+
+    for cik in CRSP2.index:
+        if cik not in FINALJSON.keys():
+            continue
+
+        FINALJSON[cik]['Metadata']['CUSIP'] = CRSP2.loc[cik, 'CUSIP']
+        FINALJSON[cik]['Metadata']['GVKEY'] = [str(s) for s in CRSP2.loc[cik, ['GVKEY', 'IID']].tolist()]
+        FINALJSON[cik]['Metadata']['NAICS'] = CRSP2.loc[cik, 'NAICS']
+
+        FINALJSON[cik]['Opening Prices'] = {}
+        price_dict = {'Volume': CRSP2.loc[cik, 'Volume'],
+                    'Close': CRSP2.loc[cik, 'Close'],
+                    'High': CRSP2.loc[cik, 'High'],
+                    'Low': CRSP2.loc[cik, 'Low'],
+                    'Open': CRSP2.loc[cik, 'Open'],
+                    'Date': CRSP2.loc[cik, 'Date']}
+        FINALJSON[cik]['Opening Prices'] = price_dict
+
+
+
 
 
 
 if __name__=='__main__':
 
     ######## NEW BAD INDUSTRIES #############
-    bad_sic = [6035, 6036, 6099, 6111, 6153, 6159, 6162, 6163, 6172, 6189, 6200, 6022, 6221, 6770, 6792, 6794, 6795, 6798, 6799, 8880, 8888, 9721, 9995]
-    FINALJSON = {cik:vals for cik,vals in FINALJSON.items() if int(vals['Metadata']['SIC code']) not in bad_sic}
+    # bad_sic = [6035, 6036, 6099, 6111, 6153, 6159, 6162, 6163, 6172, 6189, 6200, 6022, 6221, 6770, 6792, 6794, 6795, 6798, 6799, 8880, 8888, 9721, 9995]
+    # FINALJSON = {cik:vals for cik,vals in FINALJSON.items() if int(vals['Metadata']['SIC code']) not in bad_sic}
     # with open('final_json.txt', 'w') as f:
     #     f.write(json.dumps(FINALJSON, indent=4, sort_keys=True))
 
@@ -245,23 +287,63 @@ if __name__=='__main__':
     cik = '1376972' # home inns and hotels mgmt, F-1 foreign listings
     cik = '1407031' # golden pond (warrant filing)
     cik = '1544856' # CENCOSUD SA'
+    cik = '1175685' # Bladelogic
     cik = '1500435' # GoPro
 
-    # tf = testfiles = glob.glob(os.path.join(BASEDIR, cik) + '/*')
-    # ids = [f[-16:] for f in tf]
-    # pr = list(zip(ids, [get_price_range(f) for f in testfiles]))
+    tf = glob.glob(os.path.join(BASEDIR, cik) + '/*')
+    pr = [get_price_range(f) for f in tf]
 
-    ciks = iter(list(FINALJSON.keys())[50:])
-
-    cik, tf, pr = test_cik(next(ciks))
-    list_pr = merge_price_range(cik, pr)
-    pprint(list_pr)
-
-
+    ciks = iter(FINALJSON.keys())
 
     company_overview = pd.DataFrame([FINALJSON[cik]['Company Overview'] for cik in FINALJSON.keys()], FINALJSON.keys())
     financials = pd.DataFrame([FINALJSON[cik]['Financials'] for cik in FINALJSON.keys()], FINALJSON.keys())
     experts = pd.DataFrame([FINALJSON[cik]['Experts'] for cik in FINALJSON.keys()], FINALJSON.keys())
+
+
+    CRSP2 = pd.read_csv("data/CRSP2_openingprices.csv", dtype=object)
+    CRSP2.set_index("CIK")
+    firms = set(FINALJSON.keys()) # 1541
+    crspfirms = set(CRSP2.index) # 1521
+    missingfirms = firms - crspfirms # 34
+
+
+
+
+    # X1) Get S-1 filings from NASDAQ
+    # X2) GET SIC codes from edgar / rawjson.txt
+    # X3) Filter bad SIC codes
+    # X4) Match CRSP/Yahoo Firms with NASDAQ firms for opening/close prices
+    # 4) Get WRDS access and US CRSP dataset for stock prices.
+    # 5) Fix Gtrends names, start scraping attention
+    # 8) Get partial price adjustments and put in "Filings"
+
+
+
+
+
+
+def pricerng_all(ciks):
+
+    ciks = iter(FINALJSON.keys())
+    missing_pr = []
+
+    for cik in ciks:
+        coname = FINALJSON[cik]['Company Overview']['Company Name']
+        if len(FINALJSON[cik]['Filing'][0]) > 4:
+            print("Skipping {} {}".format(cik, coname))
+            continue
+
+        print('Getting Price Range for: {} {}'.format(cik, coname))
+        cik, tf, pr = test_cik(next(ciks))
+        list_pr = merge_price_range(cik, pr)
+
+        if any([x[4] for x in list_pr]):
+            print("Did not find price range for {}".format(coname))
+            missing_pr.append(cik)
+
+        FINALJSON[cik]['Filing'] = list_pr
+        print('\n')
+
 
 
 

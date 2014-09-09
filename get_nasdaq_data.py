@@ -5,6 +5,7 @@ import csv, glob, json, os
 import traceback, time, random
 import pandas as pd
 import requests
+import arrow
 
 from pprint             import pprint
 from functools          import reduce
@@ -21,6 +22,8 @@ FILE_PATH = 'text_files/'
 BASEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ")
 USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64; rv:12.0) Gecko/20100101 Firefox/21.0'
 FINALJSON = json.loads(open('final_json.txt').read())
+aget = lambda datestr: arrow.get(datestr, 'M/D/YYYY')
+
 
 
 def extract_NASDAQ_IPO_data(links):
@@ -89,8 +92,6 @@ def scrape_company_overview(overview_url):
         print('Error while reading overview tab for:' + overview_url)
         traceback.print_exc()
 
-
-
 def scrape_financials_and_filings(financials_url):
 
     try:
@@ -124,8 +125,6 @@ def scrape_financials_and_filings(financials_url):
 
     return financials_dict, filings
 
-
-
 def scrape_experts(experts_url):
     ### Reading experts tab
     html = requests.get(experts_url).text
@@ -143,7 +142,6 @@ def scrape_experts(experts_url):
 
     return experts_dict
 
-
 def extract_NASDAQ_IPO_data_threaded(LINKS):
     "Multi-threaded wrapper for NSADAQ Data scraping"
     with ThreadPoolExecutor(max_workers=N) as exec:
@@ -151,14 +149,13 @@ def extract_NASDAQ_IPO_data_threaded(LINKS):
         final_dict  = reduce(lambda d1, d2: dict(d1, **d2), json_result)
     return final_dict
 
+# 4859154
 
-
-
-def extract_SIC():
+def extract_SIC(final_dict):
     "Extracts SIC codes from SEC edgar"
 
-    rawjson = json.loads(open(BASEDIR + '/rawjson.txt').read())
-    ciks = FINALJSON.keys()
+    oldjson = json.loads(open(BASEDIR + '/final_json.txt').read())
+    ciks = final_dict.keys()
 
     def scrape_SIC(cik):
         url = 'https://www.sec.gov/cgi-bin/browse-edgar?CIK={}&Find=Search&owner=exclude&action=getcompany'.format(cik)
@@ -169,96 +166,28 @@ def extract_SIC():
 
     no_sic = []
     for cik in ciks:
-        if 'Metadata' in FINALJSON[cik].keys():
-            if 'SIC code' in FINALJSON[cik]['Metadata']:
-                if FINALJSON[cik]['Metadata']['SIC code'] != "NA":
-                    print('Already had SIC', FINALJSON[cik]['Metadata']['SIC code'])
+        if 'Metadata' in final_dict[cik].keys():
+            if 'SIC code' in final_dict[cik]['Metadata']:
+                if final_dict[cik]['Metadata']['SIC code'] != "NA":
+                    print('Already had SIC', final_dict[cik]['Metadata']['SIC code'])
                     continue
 
-        if cik in rawjson.keys():
-            if 'Metadata' not in FINALJSON[cik]:
-                FINALJSON[cik]['Metadata'] = {'SIC code': 'NA'}
-            FINALJSON[cik]['Metadata']['SIC code'] = rawjson[cik]['Metadata']['SIC code']
-            print("From old_rawjson ->", FINALJSON[cik]['Metadata']['SIC code'])
+        if cik in oldjson.keys():
+            if 'Metadata' not in final_dict[cik]:
+                final_dict[cik]['Metadata'] = {'SIC code': 'NA'}
+            final_dict[cik]['Metadata']['SIC code'] = oldjson[cik]['Metadata']['SIC code']
+            print("From old_rawjson ->", final_dict[cik]['Metadata']['SIC code'])
             continue
 
         SIC_code = scrape_SIC(cik)
         if SIC_code:
-            if 'Metadata' not in FINALJSON[cik]:
-                FINALJSON[cik]['Metadata'] = {'SIC code': 'NA'}
-            FINALJSON[cik]['Metadata']['SIC code'] = SIC_code
-            print("SEC Edgar ->", FINALJSON[cik]['Metadata']['SIC code'])
+            if 'Metadata' not in final_dict[cik]:
+                final_dict[cik]['Metadata'] = {'SIC code': 'NA'}
+            final_dict[cik]['Metadata']['SIC code'] = SIC_code
+            print("SEC Edgar ->", final_dict[cik]['Metadata']['SIC code'])
             continue
 
-    with open('final_json.txt', 'w') as f:
-        f.write(json.dumps(FINALJSON, indent=4, sort_keys=True))
-
-
-
-
-if __name__=='__main__':
-    df_pricings = pd.read_csv("data/nasdaq_pricings.csv")
-    # df_pricings = df_pricings[df_pricings['Market'] != "OTCBB"]
-    # df =  df_pricings[[x not in finaljson_firms for x in df_pricings['Company Name']]]
-    # df = df_pricings[df_pricings['CIK'] == 'NA']
-    # df.set_index('CIK', inplace=True)
-
-    df = df_pricings[:4]
-    links = list(zip(df.index, df['URL']))
-    # final_dict = extract_NASDAQ_IPO_data_threaded(links)
-
-    # ### Writing json file
-    # with open('final_dict.txt', 'w') as myfile:
-    #   myfile.write(json.dumps(final_dict, indent=4, sort_keys=True))
-
-
-
-
-
-
-
-
-
-def final_json_clean_data():
-
-    for cik in FINALJSON:
-        if 'Metadata' not in FINALJSON[cik]:
-            FINALJSON[cik]['Metadata'] = {}
-        FINALJSON[cik]['Metadata']['Company Description'] = cik + '_company_description.txt'
-        FINALJSON[cik]['Metadata']['Use of Process'] = cik + '_use_of_proceeds.txt'
-        if 'Company_description' in FINALJSON[cik].keys():
-            FINALJSON[cik].pop('Company_description')
-        if 'Use of Proceeds' in FINALJSON[cik].keys():
-            FINALJSON[cik].pop('Use of Proceeds')
-
-    for cik in FINALJSON:
-        empkey = [x for x in FINALJSON[cik]['Company Overview'].keys() if x.startswith('Employees')][0]
-        FINALJSON[cik]['Company Overview']['Employees'] = FINALJSON[cik]['Company Overview'][empkey]
-        if empkey != 'Employees':
-            FINALJSON[cik]['Company Overview'].pop(empkey)
-
-    for cik in FINALJSON:
-        FINALJSON[cik]['Company Overview']['CIK'] = cik
-
-    # with open('final_json.txt', 'w') as f:
-    #     f.write(json.dumps(FINALJSON, indent=4, sort_keys=True))
-
-
-    filings = {cik:FINALJSON[cik]['Filing'] for cik,vals in FINALJSON.items()}
-    # FINALJSON['1594109'] # grubhub
-
-
-
-    # 1) Get S-1 filings from NASDAQ
-    # 2) GET SIC codes from edgar / rawjson.txt
-    # 3) Filter bad SIC codes
-    # 4) Match IPOScoop Firms with NASDAQ firms
-    # 5) Fix firm names, Gtrends this matching
-    # 6) Match IPOScoop firms to cik
-    # 7) get price jumps/returns data and put in "Returns"
-    # 8) Get partial price adjustments and put in "Filings"
-
-
+    return final_dict
 
 
 def get_filings(FINALJSON):
@@ -278,11 +207,12 @@ def get_filings(FINALJSON):
                 os.makedirs(savedir)
 
             if glob.glob(filename):
-                if os.path.getsize(filename) < 1600:
+                filesize = os.path.getsize(filename)
+                if filesize < 5120:
                     print("Filesize: {}".format(os.path.getsize(filename)))
-                    os.remove(filename) # rm file < 666 kb
+                    os.remove(filename) # rm file < 5kb
                 else:
-                    print('>> Already downloaded {}'.format(url))
+                    print('>> Already downloaded {}: {}kb'.format(url, filesize))
                     continue
 
             # NASDAQ filings are tagged and cleaner than EDGAR filings.
@@ -314,8 +244,76 @@ def get_filings(FINALJSON):
 
 
 
+def final_json_clean_data(FINALJSON=FINALJSON):
+
+    for cik in FINALJSON:
+        if 'Metadata' not in FINALJSON[cik]:
+            FINALJSON[cik]['Metadata'] = {}
+
+    # Fixes Text File descriptions
+    for cik in FINALJSON:
+        FINALJSON[cik]['Metadata']['Company Description'] = cik + '_company_description.txt'
+        FINALJSON[cik]['Metadata']['Use of Process'] = cik + '_use_of_proceeds.txt'
+        if 'Company_description' in FINALJSON[cik].keys():
+            FINALJSON[cik].pop('Company_description')
+        if 'Use of Proceeds' in FINALJSON[cik].keys():
+            FINALJSON[cik].pop('Use of Proceeds')
 
 
+    # Fixes 'Employees (as of MM-DD-YYYY)'
+    for cik in FINALJSON:
+        empkey = [x for x in FINALJSON[cik]['Company Overview'].keys() if x.startswith('Employees')][0]
+        FINALJSON[cik]['Company Overview']['Employees'] = FINALJSON[cik]['Company Overview'][empkey]
+        if empkey != 'Employees':
+            FINALJSON[cik]['Company Overview'].pop(empkey)
+
+    for cik in FINALJSON:
+        FINALJSON[cik]['Company Overview']['CIK'] = cik
+
+    for cik in FINALJSON:
+        FINALJSON[cik]['Metadata']['Number of Filings'] = len(FINALJSON[cik]['Filing'])
+
+    return FINALJSON
+
+    # for cik in FINALJSON:
+    #     FINALJSON[cik]['Metadata']['Days from Pricing to Listing'] = len(FINALJSON[cik]['Filing'])
+    #     first_pricing = aget(FINALJSON[cik]['Filing'][0][2])
+    #     second_pricing = aget(FINALJSON[cik]['Filing'][XXX][2])
+
+
+    # with open('final_json.txt', 'w') as f:
+    #     f.write(json.dumps(FINALJSON, indent=4, sort_keys=True))
+
+
+
+
+
+if __name__=='__main__':
+    df_pricings = pd.read_csv("./data/nasdaq_pricings.csv")
+    finaljson_firms = [FINALJSON[cik]['Company Overview']['Company Name'] for cik in FINALJSON.keys()]
+    df =  df_pricings[[x not in finaljson_firms for x in df_pricings['Company Name']]]
+    # df = df_pricings[df_pricings['CIK'] == 'NA']
+    # df.set_index('CIK', inplace=True)
+    links = list(zip(df.index, df['URL']))
+    # final_dict = extract_NASDAQ_IPO_data_threaded(links)
+
+    # ### Writing json file
+    # with open('final_dict.txt', 'w') as myfile:
+    #   myfile.write(json.dumps(final_dict, indent=4, sort_keys=True))
+
+    # with open('final_json.txt', 'w') as f:
+    #     f.write(json.dumps(FINALJSON, indent=4, sort_keys=True))
+
+
+
+
+
+
+
+
+
+
+############### OLD ############################
 # finaljson_firms = [FINALJSON[cik]['Company Overview']['Company Name'] for cik in FINALJSON.keys()]
 
 # finaljson_dict = {cik:val['Company Overview']['Company Name'] for cik,val in FINALJSON.items()}
@@ -330,3 +328,26 @@ def get_filings(FINALJSON):
 #         continue
 #     df_pricings.loc[idx, 'CIK'] = cik
 
+
+
+
+######## SIC CODES
+# SIC_Code|AD_Office|Industry_Title
+# 6035|7|SAVINGS INSTITUTION, FEDERALLY CHARTERED
+# 6036|7|SAVINGS INSTITUTIONS, NOT FEDERALLY CHARTERED
+# 6099|7|FUNCTIONS RELATED TO DEPOSITORY BANKING, NEC
+# 6111|12|FEDERAL & FEDERALLY-SPONSORED CREDIT AGENCIES
+# 6153|7|SHORT-TERM BUSINESS CREDIT INSTITUTIONS
+# 6159|7|MISCELLANEOUS BUSINESS CREDIT INSTITUTION
+# 6162|7|MORTGAGE BANKERS & LOAN CORRESPONDENTS
+# 6163|7|LOAN BROKERS
+# 6172|7|FINANCE LESSORS
+# 6189|OSF|ASSET-BACKED SECURITIES
+# 6200|8|SECURITY & COMMODITY BROKERS, DEALERS, EXCHANGES & SERVICES
+# 6221|8|COMMODITY CONTRACTS BROKERS & DEALERS
+# 6770|All|BLANK CHECKS
+# 6792|4|OIL ROYALTY TRADERS
+# 6794|3|PATENT OWNERS & LESSORS
+# 6795|9|MINERAL ROYALTY TRADERS
+# 6798|8|REAL ESTATE INVESTMENT TRUSTS
+# 6799|8|INVESTORS, NEC

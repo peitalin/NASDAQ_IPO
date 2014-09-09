@@ -7,12 +7,13 @@ import dateutil.parser
 import pandas as pd
 import progressbar
 
-from itertools      import count
-from functools      import wraps
-from ftplib         import FTP
-from blessings      import Terminal
-from progressbar    import ProgressBar, FileTransferSpeed, Percentage, Bar
+from itertools          import count
+from functools          import wraps
+from ftplib             import FTP
+from blessings          import Terminal
+from progressbar        import ProgressBar, FileTransferSpeed, Percentage, Bar
 from concurrent.futures import ProcessPoolExecutor
+from fuzzywuzzy         import fuzz, process
 
 if float(progressbar.__version__[:3]) > 2.3:
     from progressbar import SimpleProgress
@@ -134,7 +135,6 @@ def fuzzy_match_P(list_of_kwargs):
         lo_match = sum(flatten[1::2], [])
         return hi_match, lo_match
 def _fuzzy_match(args):
-    from fuzzywuzzy import fuzz, process
     enum, issuers, s1_coname = args
     alphabet = string.ascii_lowercase
     progbar  = GrepProgressbar(enum+2 , alphabet)
@@ -163,90 +163,76 @@ def _fuzzy_match(args):
 
 
 
-# qwer = pd.read_csv("IPOScoop.csv", encoding='latin-1' )
-# qwer['dates'] = [aget(d) for d in qwer['dates']]
 
 
-# aget = lambda datestr: arrow.get(datestr, 'YYYY-MM-DD')
-# arng = lambda start, end: arrow.Arrow.range('month', start, end)
-# dranges = arng(aget('2005-01-01'), aget('2014-06-01'))
+def gtrends_names():
 
-# for start, end in zip(dranges, dranges[1:]):
-#     scoopfirms = qwer[(qwer['dates'] > start) & (qwer['dates'] < end)]
-#     secfirms =
+    # gdat = pd.DataFrame([FINALJSON[cik]['Company Overview'] for cik in FINALJSON.keys()], FINALJSON.keys())
+    # aget = lambda datestr: arrow.get(datestr, 'M/D/YYYY')
 
+    # gdat = gdat[['Company Name', 'Status']]
+    # dates = [aget(re.findall(r'\d*/\d*/\d\d\d\d', s)[0]).date() for s in gdat['Status']]
+    # gdat['Status'] = [d.strftime('%m-%d-%Y') for d in dates]
 
-# df = pd.DataFrame([rawjson[cik]['Company Overview'] for cik in rawjson.keys()])
+    gdat = pd.read_csv("gdat.csv", index_col='cik')
+    old_gdat = pd.read_csv('/Users/peitalin/Dropbox/gtrends-beta/cik-ipo/cik-ipos.csv',
+                           sep='|', names=['cik', 'coname', 'date'], index_col='cik')
 
-# for ticker, cname in list(zip(qf['Symbol'], qf['Issuer']))[:4]:
+    gdat.index = [str(x) for x in gdat.index]
+    old_gdat.index = [str(x) for x in old_gdat.index]
+    gset = set(gdat.index)
+    gsetold = set(old_gdat.index)
 
-#     # cik = df[df['Proposed Symbol'] == ticker]['CIK'].tolist()[0][3:]
-#     scoopfirms = qwer[qwer['Symbol']==ticker]
-#     secfirms = df[df['Proposed Symbol'] == ticker]
-#     print(ticker, ">>>>>", secfirms['Proposed Symbol'])
+    # list of firms you don't need to gtrend
+    # old_gdat.ix[gset & gsetold]
 
+    # list of firms need to scrape
+    # ciks2= {cik for cik in gset & gsetold if (a(gdat.ix[cik]['date']) - a(old_gdat.ix[cik]['date'])).days > 30}
 
+    gdat['gname'] = gdat['coname']
+    for cik in gset & gsetold:
+        print(gdat.loc[cik, 'gname'], "->", old_gdat.loc[cik, 'coname'])
+        gdat.loc[cik, 'gname'] = old_gdat.loc[cik, 'coname']
 
+    regexes = [
+            r'(( CO[,\.]?)? /[A-Z][A-Z])$',
+            r'(s\.a\.a\.)$',
+            r'([,]? L[\.\s]?P[\.]?)$',
+            r'([,]? INC[\.]?)$',
+            r'([,]? LTD[\.]?)$',
+            r'([,]? CO[\.])$',
+            r'([,]? CORP[\.]?\s*(II)?[I]?)$',
+            r'([,]? L[\.]?L[\.]?C[\.]?)$',
+            r'([,]? N[\.]?V[\.]?)$',
+            r'([,]? S[\.]?A[\.]?)$',
+            r'([,]? P[\.]?L[\.]?C[\.]?)$',
+            r',$',
+            ]
 
+    renamefirms = {
+            'Yingli Green Energy Holding CO': 'Yingli Green Energy',
+            'Global Education & Technology Group': 'Global Education and Technology Group',
+            'Santander Mexico Financial Group, S.a.b. DE C.v.': 'Santander Group',
+            'China Techfaith Wireless Communication Technology': 'Techfaith',
+            'NEW Oriental Education & Technology Group': 'New Oriental',
+            'Country Style Cooking Restaurant Chain': 'Country Style',
+            'Home Inns & Hotels Management': 'Home Inns Group',
+            'Controladora Vuela Compania DE Aviacion, S.a.b. DE C.v.': 'Volaris',
+            'Allied World Assurance CO Holdings, AG': 'Allied World Assurance',
+            'Ulta Salon, Cosmetics & Fragrance': 'Ulta Beauty',
+            'Alpha Natural Resources, Inc./old': 'Alpha Natural Resources',
+            }
 
-def match_IPOscoop_to_SEC():
-    # only works when called via main()
-    # requires 'fuzzy_match_P' function defined in main.py
-
-    qwer = pd.read_csv("IPOScoop.csv", encoding='latin-1' )
-
-    # qwer['Coname'] = list(map(lambda x: x.lower(), qwer['Issuer']))
-    # issuers = qwer.Issuer.tolist()
-
-    SEC_coname = [rawjson[cik]['Company Overview']['Company Name'] for cik in rawjson.keys()]
-
-    hi_match, lo_match = fuzzy_match_P(qwer['Issuer'], SEC_coname)
-
-
-    firm_lookup = {
-        'plains gp holdings lp': [1581990],
-        'mead johnson nutrition co': [1452575],
-        'renewable energy group inc': [1463258],
-        'insys therapeutics inc': [1516479],
-        'rexnord corp': [1439288],
-        'freightcar america inc': [1320854]
-        }
-
-    matchCIKS = []
-    for triple in hi_match:
-        issuer, m_name, m_score = triple
-        m_cik = [x[1] for x in s1_id if x[0] == m_name]
-        if len(m_cik) == 1:
-            matchCIKS += [[issuer] + m_cik]
-        else:
-            try:
-                matchCIKS += [[issuer] + firm_lookup[m_name]]
-            except KeyError:
-                print([x for x in s1_id if m_name in  x[0]])
-
-
-    fdat = pd.DataFrame(matchCIKS, columns=['coname', 'cik'])
-    IPO_success = gdat.merge(fdat, how='inner', on=['coname'])
-    IPO_success = IPO_success.set_index('cik')
-    succ = IPO_success
-
-    new_df = pd.DataFrame(columns=s1.keys())
-    for cik, ipo_date in zip(succ.index, succ.Date):
-        match = s1[s1.index == cik]
-        ipo_date = arrow.get(ipo_date)
-        s1_dates = [d for d in match['date'] if arrow.get(d) < ipo_date]
-        if len(s1_dates) > 0:
-            ref_date = max([arrow.get(d) for d in s1_dates])
-            ref_date = str(ref_date.date())
-            new_df = new_df.append(match[match['date'] == ref_date])
-        else:
-            print(cik, ipo_date, s1_dates, '-> No valid S-1 filing date')
-            print(match['date'])
-
-
-    succ = succ.join(new_df, lsuffix='lower')
-    succ = succ.drop('conamelower', axis=1)
-    succ = succ.dropna()
+    for cik, values in gdat.ix[gset - gsetold].iterrows():
+        firm = values['gname']
+        for regex in regexes:
+            firm = re.sub(regex, '', firm)
+        firm = ' '.join(capwords(s) if len(s)>3 else s for s in firm.split(' '))
+        # if len(firm) > 4:
+        #         print(cik, firm)
+        if firm in renamefirms.keys():
+            firm = renamefirms[firm]
+        gdat.loc[cik, 'gname'] = firm
 
 
 
@@ -255,23 +241,3 @@ def match_IPOscoop_to_SEC():
 
 
 
-######## SIC CODES
-# SIC_Code|AD_Office|Industry_Title
-# 6035|7|SAVINGS INSTITUTION, FEDERALLY CHARTERED
-# 6036|7|SAVINGS INSTITUTIONS, NOT FEDERALLY CHARTERED
-# 6099|7|FUNCTIONS RELATED TO DEPOSITORY BANKING, NEC
-# 6111|12|FEDERAL & FEDERALLY-SPONSORED CREDIT AGENCIES
-# 6153|7|SHORT-TERM BUSINESS CREDIT INSTITUTIONS
-# 6159|7|MISCELLANEOUS BUSINESS CREDIT INSTITUTION
-# 6162|7|MORTGAGE BANKERS & LOAN CORRESPONDENTS
-# 6163|7|LOAN BROKERS
-# 6172|7|FINANCE LESSORS
-# 6189|OSF|ASSET-BACKED SECURITIES
-# 6200|8|SECURITY & COMMODITY BROKERS, DEALERS, EXCHANGES & SERVICES
-# 6221|8|COMMODITY CONTRACTS BROKERS & DEALERS
-# 6770|All|BLANK CHECKS
-# 6792|4|OIL ROYALTY TRADERS
-# 6794|3|PATENT OWNERS & LESSORS
-# 6795|9|MINERAL ROYALTY TRADERS
-# 6798|8|REAL ESTATE INVESTMENT TRUSTS
-# 6799|8|INVESTORS, NEC
