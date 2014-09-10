@@ -25,41 +25,48 @@ FINALJSON = json.loads(open('final_json.txt').read())
 aget = lambda datestr: arrow.get(datestr, 'M/D/YYYY')
 
 
-
-def extract_NASDAQ_IPO_data(links):
-    """Scrapes all data from NASDAQ IPO links obtained from get_nasdaq_links.py
+def extract_NASDAQ_IPO_data_threaded(links):
+    """Multi-threaded wrapper for NSADAQ Data scraping.
+    Scrapes all data from NASDAQ IPO links obtained from get_nasdaq_links.py.
     """
-    final_dict = {}
-    for link in links:
 
-        if glob.glob(FILE_PATH + '/{}*'.format(str(link[0]))):
-            print("NASDAQ data exists for {}, skipping".format(str(link[0])))
-            continue
-
-        print("Getting data for: " + link[1].split('/')[-1])
-        url = overview_url = link[1]
-        financials_url = url + "?tab=financials"
-        experts_url = url + "?tab=experts"
-        item_dict = {}
-
-        company_overview_dict = scrape_company_overview(url)
-        item_dict['Company Overview'] = company_overview_dict
-        cik = company_overview_dict['CIK'][3:]
-
-        item_dict['Metadata'] = {}
-        item_dict['Metadata']['Use of Proceeds'] = cik + '_use_of_proceeds.txt'
-        item_dict['Metadata']['Company Description'] = cik + '_company_description.txt'
-
-
-        financials, filings = scrape_financials_and_filings(financials_url)
-        item_dict['Financials'] = financials
-        item_dict['Filing'] = filings
-        item_dict['Experts'] = scrape_experts(experts_url)
-
-        final_dict[cik] = item_dict
-        time.sleep(random.randint(1,3))
-
+    with ThreadPoolExecutor(max_workers=N) as exec:
+        json_result = exec.map(extract_NASDAQ_IPO_data, [iter(links)]*N)
+        final_dict  = reduce(lambda d1, d2: dict(d1, **d2), json_result)
     return final_dict
+
+    def extract_NASDAQ_IPO_data(links):
+        """Main loop called from extract_NASDAQ_IPO_data_threaded()"""
+
+        final_dict = {}
+        for link in links:
+            if glob.glob(FILE_PATH + '/{}*'.format(str(link[0]))):
+                print("NASDAQ data exists for {}, skipping".format(str(link[0])))
+                continue
+
+            print("Getting data for: " + link[1].split('/')[-1])
+            url = overview_url = link[1]
+            financials_url = url + "?tab=financials"
+            experts_url = url + "?tab=experts"
+            item_dict = {}
+
+            company_overview_dict = scrape_company_overview(url)
+            item_dict['Company Overview'] = company_overview_dict
+            cik = company_overview_dict['CIK'][3:]
+
+            item_dict['Metadata'] = {}
+            item_dict['Metadata']['Use of Proceeds'] = cik + '_use_of_proceeds.txt'
+            item_dict['Metadata']['Company Description'] = cik + '_company_description.txt'
+
+            financials, filings = scrape_financials_and_filings(financials_url)
+            item_dict['Financials'] = financials
+            item_dict['Filing'] = filings
+            item_dict['Experts'] = scrape_experts(experts_url)
+
+            final_dict[cik] = item_dict
+            time.sleep(random.randint(1,3))
+        return final_dict
+
 
 def scrape_company_overview(overview_url):
 
@@ -142,20 +149,13 @@ def scrape_experts(experts_url):
 
     return experts_dict
 
-def extract_NASDAQ_IPO_data_threaded(LINKS):
-    "Multi-threaded wrapper for NSADAQ Data scraping"
-    with ThreadPoolExecutor(max_workers=N) as exec:
-        json_result = exec.map(extract_NASDAQ_IPO_data, [iter(LINKS)]*N)
-        final_dict  = reduce(lambda d1, d2: dict(d1, **d2), json_result)
-    return final_dict
-
-# 4859154
-
 def extract_SIC(final_dict):
     "Extracts SIC codes from SEC edgar"
 
-    oldjson = json.loads(open(BASEDIR + '/final_json.txt').read())
-    ciks = final_dict.keys()
+    with ThreadPoolExecutor(max_workers=N) as exec:
+        json_result = exec.map(extract_NASDAQ_IPO_data, [iter(links)]*N)
+        final_dict  = reduce(lambda d1, d2: dict(d1, **d2), json_result)
+    return final_dict
 
     def scrape_SIC(cik):
         url = 'https://www.sec.gov/cgi-bin/browse-edgar?CIK={}&Find=Search&owner=exclude&action=getcompany'.format(cik)
@@ -164,6 +164,7 @@ def extract_SIC(final_dict):
         if 3 < len(SIC) < 8:
             return SIC
 
+    ciks = final_dict.keys()
     no_sic = []
     for cik in ciks:
         if 'Metadata' in final_dict[cik].keys():
@@ -172,13 +173,6 @@ def extract_SIC(final_dict):
                     print('Already had SIC', final_dict[cik]['Metadata']['SIC code'])
                     continue
 
-        if cik in oldjson.keys():
-            if 'Metadata' not in final_dict[cik]:
-                final_dict[cik]['Metadata'] = {'SIC code': 'NA'}
-            final_dict[cik]['Metadata']['SIC code'] = oldjson[cik]['Metadata']['SIC code']
-            print("From old_rawjson ->", final_dict[cik]['Metadata']['SIC code'])
-            continue
-
         SIC_code = scrape_SIC(cik)
         if SIC_code:
             if 'Metadata' not in final_dict[cik]:
@@ -186,11 +180,9 @@ def extract_SIC(final_dict):
             final_dict[cik]['Metadata']['SIC code'] = SIC_code
             print("SEC Edgar ->", final_dict[cik]['Metadata']['SIC code'])
             continue
-
     return final_dict
 
-
-def get_filings(FINALJSON):
+def get_s1_filings(FINALJSON):
 
     import subprocess
     filings = {cik:FINALJSON[cik]['Filing'] for cik,vals in FINALJSON.items()}
@@ -199,9 +191,12 @@ def get_filings(FINALJSON):
     filings_ = list(filings.items())
     for cik, filelist in filings_:
         for filing in filelist:
-            url = 'www.nasdaq.com' + filing[-1]
-            savedir = os.path.join(BASEDIR , "filings", cik)
-            filename = os.path.join(savedir, filing[-1].split('/')[-1])
+            try:
+                url = 'www.nasdaq.com/markets/ipos/' + filing[3]
+                savedir = os.path.join(BASEDIR , "filings", cik)
+                filename = os.path.join(savedir, filing[3].split('/')[-1])
+            except AttributeError:
+                raise(AttributeError("3rd item in each filing must be URL"))
 
             if not os.path.exists(savedir):
                 os.makedirs(savedir)
@@ -253,7 +248,7 @@ def final_json_clean_data(FINALJSON=FINALJSON):
     # Fixes Text File descriptions
     for cik in FINALJSON:
         FINALJSON[cik]['Metadata']['Company Description'] = cik + '_company_description.txt'
-        FINALJSON[cik]['Metadata']['Use of Process'] = cik + '_use_of_proceeds.txt'
+        FINALJSON[cik]['Metadata']['Use of Proceeds'] = cik + '_use_of_proceeds.txt'
         if 'Company_description' in FINALJSON[cik].keys():
             FINALJSON[cik].pop('Company_description')
         if 'Use of Proceeds' in FINALJSON[cik].keys():
@@ -275,11 +270,13 @@ def final_json_clean_data(FINALJSON=FINALJSON):
 
     return FINALJSON
 
+
+
+
     # for cik in FINALJSON:
     #     FINALJSON[cik]['Metadata']['Days from Pricing to Listing'] = len(FINALJSON[cik]['Filing'])
     #     first_pricing = aget(FINALJSON[cik]['Filing'][0][2])
     #     second_pricing = aget(FINALJSON[cik]['Filing'][XXX][2])
-
 
     # with open('final_json.txt', 'w') as f:
     #     f.write(json.dumps(FINALJSON, indent=4, sort_keys=True))
@@ -306,27 +303,53 @@ if __name__=='__main__':
 
 
 
+    # X1) Get S-1 filings from NASDAQ
+    # X2) GET SIC codes from edgar / rawjson.txt
+    # X3) Filter bad SIC codes
+    # X4) Match CRSP/Yahoo Firms with NASDAQ firms for opening/close prices
+    # X5) Get WRDS access and US CRSP dataset for stock prices.
+    # X6) Fix Gtrends names, start scraping attention
+    # 7) Make sure equity offer is actually IPO (check CUSIP)
+    # 7) Get partial price adjustments and put in "Filings"
+
+
+
+
+    # share overhang
+    # SIC industry returns
+    # IPO cycle variables
+    # Gtrends variables
+    # underwriter rank (average lead underwriters)
+    # no. underwriters
+    # VC dummy (crunchbase)
+    # confidential IPO
+    # EPS
 
 
 
 
 
+############ Remove BAD EXPERTS
+    # badciks = []
+    # badnames = []
+    # for cik in FINALJSON.keys():
+    #     try:
+    #         islink = FINALJSON[cik]['Experts']['Auditor'][1]
+    #         if "http://www.nasdaq.com/markets/ipos" in islink:
+    #             badciks.append(cik)
+    #             badnames.append(FINALJSON[cik]['Company Overview']['Company Name'])
+    #             print(FINALJSON[cik]['Company Overview']['Company Name'],': wrong experts')
+    #     except IndexError:
+    #         continue
 
 
-############### OLD ############################
-# finaljson_firms = [FINALJSON[cik]['Company Overview']['Company Name'] for cik in FINALJSON.keys()]
+    # for cik, firm in zip(badciks, badnames):
+    #     i, url = next(df[df['Company Name']==firm]['URL'].items())
+    #     experts_url = url + "?tab=experts"
+    #     experts_dict = scrape_experts(experts_url)
+    #     print(experts_dict)
+    #     FINALJSON[cik]['Experts'] = experts_dict
 
-# finaljson_dict = {cik:val['Company Overview']['Company Name'] for cik,val in FINALJSON.items()}
-
-# awol = []
-# df_pricings['CIK'] = ['NA'] * len(df_pricings)
-# for cik, firm in finaljson_dict.items():
-#     idx = df_pricings[df_pricings['Company Name']==firm].index
-#     if len(idx)==0:
-#         print("loc: {} -> {}".format(idx,cik))
-#         awol.append(cik)
-#         continue
-#     df_pricings.loc[idx, 'CIK'] = cik
 
 
 
