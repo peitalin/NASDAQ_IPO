@@ -11,13 +11,15 @@ from lxml           import etree, html
 from itertools      import *
 from functools      import reduce
 from pprint         import pprint
+from subprocess     import Popen, PIPE
 from IPython        import embed
 from widgets        import fix_bad_str, fix_dollars, view_filing, safari, firefox
 from concurrent.futures import ThreadPoolExecutor
 
 DEBUG = True
-BASEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ", "Filings")
-FINALJSON = json.loads(open('final_json.txt').read())
+BASEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ")
+FILEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ", "Filings")
+FINALJSON = json.loads(open(BASEDIR + '/final_json.txt').read())
 
 
 
@@ -32,7 +34,8 @@ def parse_section(html):
         if subheader:
             elem_types = "[self::p or self::div]"
         else:
-            Nth_elem = int(len(html.xpath("//body/efx_form//*")) / 4)
+            Nth_elem = int(len(html.xpath("//body/efx_form//*")) / 10)
+            # scan the first 1/10 of all general efx_from elems
             elem_types = "[position() < {} and (self::p or self::div)]".format(Nth_elem)
 
         efx_path = "//body/efx_form/{HEAD}/*{ELEM}"
@@ -46,7 +49,7 @@ def parse_table(html):
 
     offer_price = re.compile(r'[Oo]ffering [Pp]rice')
     common_stock = re.compile(r'[Cc]ommon [Ss]tock')
-    per_share = re.compile(r'([Pp]er [Ss]hare|Per ADS)')
+    per_share = re.compile(r'(^[Pp]er [Ss]hare|Per ADS)')
 
     for N in range(1,4):
         # Look at first 3 efx_tables with: <div>, <table>, <center> elems
@@ -129,7 +132,7 @@ def parse_sentence(sentence):
 
 def get_price_range(filename):
 
-    with open(filename) as f:
+    with open(filename, encoding='latin-1') as f:
         html = etree.HTML(f.read())
 
     # Parse text sections
@@ -150,98 +153,134 @@ def as_cash(string):
 
 
 def testfiles(cik):
-    return [x for x in glob.glob(os.path.join(BASEDIR, cik) + '/*') if 'filing.ashx?' in x]
+    return [x for x in glob.glob(os.path.join(FILEDIR, cik) + '/*') if 'filing.ashx?' in x]
 
 def fdir_pricerange(cik):
-    filingdir = glob.glob(os.path.join(BASEDIR, cik) + '/*')
-    tf = [x for x in filingdir if 'filing.ashx?' in x]
-    ids = [f[-16:] for f in tf]
+    filingdir = glob.glob(os.path.join(FILEDIR, cik) + '/*')
+    tf = [x for x in filingdir if 'filing.ashx?' in x and x[-6:].isdigit()]
+    ids = [f[-28:] for f in tf]
     return cik, tf, list(zip(ids, [get_price_range(f) for f in tf]))
-
-
-
-# def is_spin_of():
 
 
 
 def merge_price_range(cik, price_range):
 
-    cik_filing = [c[:4] for c in FINALJSON[cik]['Filing']]
-    filing_ids = [c[3] for c in cik_filing]
-    # pr: price range
-    pr_ids, prices = list(zip(*reversed(price_range)))
-    # Check price ranges align with nasdaq filings
-
-    pr_filings_aligned = all([p in f for p,f in zip(pr_ids, filing_ids)])
-
-    if pr_filings_aligned:
-        new_pr_filings = [f+[p] for f,p in zip(cik_filing, prices)]
-        flatten_prices = sum([x for x in prices if x],[])
-        flat_prices = [as_cash(d) for d in flatten_prices if as_cash(d)]
-        if flat_prices != []:
-            pmin, pmax = min(flat_prices), max(flat_prices)
+    filings = [c[:4] for c in FINALJSON[cik]['Filing']]
+    # c[:4] so list doesn't duplicate price ranges
+    for i, filing in enumerate(filings):
+        f = filing[3] # filing_name
+        if f in dict(price_range):
+            filings[i].append(dict(price_range)[f])
         else:
-            pmin, pmax = None, None
-        return new_pr_filings, pmax, pmin
-    else:
-        print(cik, cik_filing[0])
-        raise Exception("Price range IDs don't align with NASDAQ filings!!")
+            print(filing)
+            raise Exception("%s: price range IDs don't match with filings!" % cik)
+
+    return filings
+
+
+def absolute_price_range(price_range):
+    all_prices = sum([p[1] for p in price_range if p[1]], [])
+    all_prices = sorted(as_cash(d) for d in all_prices if as_cash(d))
+    pmin = min(all_prices) if all_prices else None
+    pmax = max(all_prices) if all_prices else None
+    return pmax, pmin
 
 
 
 def pricerng_all(ciks):
 
     def fdir_pricerange(cik):
-        filingdir = glob.glob(os.path.join(BASEDIR, cik) + '/*')
-        tf = [x for x in filingdir if 'filing.ashx?' in x]
-        ids = [f[-16:] for f in tf]
+        filingdir = glob.glob(os.path.join(FILEDIR, cik) + '/*')
+        tf = [x for x in filingdir if 'filing.ashx?' in x and x[-6:].isdigit()]
+        ids = [f[-28:] for f in tf]
         return cik, tf, list(zip(ids, [get_price_range(f) for f in tf]))
 
-    missing_ciks = []
-    abnormal_ciks = []
+    missing_ciks = set()
+    skipped_ciks = set()
+    abnormal_ciks = set()
     DEBUG = False
 
-    ciks = sorted(list(set(FINALJSON.keys())))[50:100]
-    for cik in ciks:
+    ciks = sorted(list(set(FINALJSON.keys())))
+    for i, cik in enumerate(ciks):
         coname = FINALJSON[cik]['Company Overview']['Company Name']
-        # if len(FINALJSON[cik]['Filing'][0]) > 4:
-        #     print("Skipping {} {}".format(cik, coname))
+        if len(FINALJSON[cik]['Filing'][0]) > 4:
+            print("Skipping %s %s" % (cik, coname))
+            skipped_ciks |= {cik}
+            continue
+
+        # if not any([f[4] for f in FINALJSON[cik]['Filing']]):
+        #     missing_ciks |= {cik}
         #     continue
-        print('\n==> Getting Price Range for: {} {}'.format(cik, coname))
+
+        print('\n==> Getting Price Range for: %s %s' % (cik, coname))
         cik, tf, price_range = fdir_pricerange(cik)
         if not tf:
             print("Missing filings for {}".format(coname))
-            missing_ciks.append(cik)
+            missing_ciks |= {cik}
             continue
 
-        list_pr, pmax, pmin = merge_price_range(cik, price_range)
+        list_pr = merge_price_range(cik, price_range)
+        pmax, pmin = absolute_price_range(price_range)
         if not pmax:
-            print("Did not find price range for {}".format(coname))
-            missing_ciks.append(cik)
+            print("Did not find price range for %s" % coname)
+            missing_ciks |= {cik}
 
         elif (pmax - pmin) > 10:
-            print("!!! {} => price range seems large: {}~{}".format(coname, pmax, pmin))
-            abnormal_ciks.append(cik)
+            print("!! %s => price range is way big: %s~%s" % (coname, pmax, pmin))
+            abnormal_ciks |= {cik}
 
         FINALJSON[cik]['Filing'] = list_pr
         pprint(price_range)
-        print('=== Updated price range for {} ===\n'.format(cik))
+        print('=== Updated price range for %s ===\n' % cik)
 
 
 
+# 900 onwards
+abnormal_ciks = {'1024305', '1062781', '1117106', '1161448', '1208208', '1271024', '1274494', '1307954', '1311596', '1326732', '1335793', '1347557', '1361983', '1365742', '1388319', '1395213', '1401257', '1411158', '1419945', '1442596', '1467858', '1474952', '1477156', '1477641'}
 
 
+# spinoffs = {cik:firmname(cik) for cik in ciks if is_spinoff(cik)}
 
+
+def no_revenue():
+    [FINALJSON[cik] for cik in FINALJSON if FINALJSON[cik]['Financials']['Revenue']== ' -- ']
+
+
+def is_spinoff(cik):
+    filingdir = glob.glob(os.path.join(FILEDIR, cik) + '/*')
+    for filing in filingdir[:2]:
+        grep_str = "egrep '(our spin-off|the spin-off will)' {}".format(filing)
+        std_out = Popen(grep_str, shell=True, stdout=PIPE).stdout.read()
+        if std_out:
+            print("{}: {} is a spin-off".format(firmname(cik), cik))
+            if DEBUG: print(std_out.decode('latin-1').replace('&nbsp;',''))
+            return True
+    return False
+
+
+def print_pricerange(s):
+    if not s.isdigit():
+        cik = [k for k in FINALJSON if firmname(k).lower().startswith(s)][0]
+    else:
+        cik = s
+    print("===> Filing Price Range: %s: %s <===" % (firmname(cik), cik))
+    pprint([[v[2], v[1], v[-1]] for v in FINALJSON[cik]['Filing']])
+    print("="*40+'\n')
+
+# '1467858' -> GM
 
 
 def firmname(cik):
     return FINALJSON[cik]['Company Overview']['Company Name']
 
+
 def is_CUSIP_first_offer(cik):
-    """Checks last -3:-1 digits to see whether the offer is truly the 1st equity offering. E.g CUSIP: '470359100' gives '10' which is then first equity offer."""
+    """Checks last -3:-1 digits to see whether the offer is truly the 1st equity offering.
+    E.g CUSIP: '470359100' gives '10' which is then first equity offer."""
     CUSIP = FINALJSON[cik]['Metadata']['CUSIP']
     print("{} => CUSIP: {}".format(firmname(cik), CUSIP))
     return CUSIP[-3:-1] == '10'
+
 
 
 
@@ -280,17 +319,14 @@ if __name__=='__main__':
     cik = '1345016' # Yelp!
     cik = '1350031' # Embarq -> all none
 
-    # tf = glob.glob(os.path.join(BASEDIR, cik) + '/*')
-    # pr = [get_price_range(f) for f in tf]
+    tf = glob.glob(os.path.join(FILEDIR, cik) + '/*')
+    price_range = [get_price_range(f) for f in tf]
 
     # ciks = iter(FINALJSON.keys())
 
-    # company_overview = pd.DataFrame([FINALJSON[cik]['Company Overview'] for cik in FINALJSON.keys()], FINALJSON.keys())
-    # financials = pd.DataFrame([FINALJSON[cik]['Financials'] for cik in FINALJSON.keys()], FINALJSON.keys())
-    # experts = pd.DataFrame([FINALJSON[cik]['Experts'] for cik in FINALJSON.keys()], FINALJSON.keys())
-
-
-
+    company_overview = pd.DataFrame([FINALJSON[cik]['Company Overview'] for cik in FINALJSON.keys()], FINALJSON.keys())
+    financials = pd.DataFrame([FINALJSON[cik]['Financials'] for cik in FINALJSON.keys()], FINALJSON.keys())
+    experts = pd.DataFrame([FINALJSON[cik]['Experts'] for cik in FINALJSON.keys()], FINALJSON.keys())
 
 
 

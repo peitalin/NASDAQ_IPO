@@ -263,9 +263,6 @@ def final_json_clean_data(FINALJSON=FINALJSON):
             FINALJSON[cik]['Company Overview'].pop(empkey)
 
     for cik in FINALJSON:
-        FINALJSON[cik]['Company Overview']['CIK'] = cik
-
-    for cik in FINALJSON:
         FINALJSON[cik]['Metadata']['Number of Filings'] = len(FINALJSON[cik]['Filing'])
 
     return FINALJSON
@@ -309,8 +306,9 @@ if __name__=='__main__':
     # X4) Match CRSP/Yahoo Firms with NASDAQ firms for opening/close prices
     # X5) Get WRDS access and US CRSP dataset for stock prices.
     # X6) Fix Gtrends names, start scraping attention
-    # 7) Make sure equity offer is actually IPO (check CUSIP)
-    # 7) Get partial price adjustments and put in "Filings"
+    # X7) Make sure equity offer is actually IPO (check CUSIP)
+    # X8) Get partial price adjustments and put in "Filings"
+    # 9) Check Spinoff IPOs
 
 
 
