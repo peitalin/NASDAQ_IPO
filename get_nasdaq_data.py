@@ -23,17 +23,12 @@ BASEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ")
 USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64; rv:12.0) Gecko/20100101 Firefox/21.0'
 FINALJSON = json.loads(open('final_json.txt').read())
 aget = lambda datestr: arrow.get(datestr, 'M/D/YYYY')
-
+firmname = lambda cik: FINALJSON[cik]['Company Overview']['Company Name']
 
 def extract_NASDAQ_IPO_data_threaded(links):
     """Multi-threaded wrapper for NSADAQ Data scraping.
     Scrapes all data from NASDAQ IPO links obtained from get_nasdaq_links.py.
     """
-
-    with ThreadPoolExecutor(max_workers=N) as exec:
-        json_result = exec.map(extract_NASDAQ_IPO_data, [iter(links)]*N)
-        final_dict  = reduce(lambda d1, d2: dict(d1, **d2), json_result)
-    return final_dict
 
     def extract_NASDAQ_IPO_data(links):
         """Main loop called from extract_NASDAQ_IPO_data_threaded()"""
@@ -67,132 +62,113 @@ def extract_NASDAQ_IPO_data_threaded(links):
             time.sleep(random.randint(1,3))
         return final_dict
 
-
-def scrape_company_overview(overview_url):
-
-    ### Reading Company Overview tab
-    try:
-        html = requests.get(overview_url).text
-        xml = etree.HTML(html)
-
-        company_overview_dict = {}
-        company_overview_rows = xml.xpath('//div[@id="infoTable"]/table//tr')
-        for row in company_overview_rows:
-            company_overview_dict[row.xpath('.//td[1]/text()')[0]] = ' '.join(row.xpath('.//td[2]//text()'))
-        cik = company_overview_dict['CIK'][3:]
-
-        ### Reading use of proceeds
-        use_of_proceeds = "".join(xml.xpath('//div[@class="infoTable_2"]/pre/text()'))
-        with open(FILE_PATH +  cik + '_use_of_proceeds.txt', 'wb') as f:
-            f.write(use_of_proceeds.encode('utf-8'))
-
-        ### Reading company description
-        describe_main = xml.xpath('//div[@class="ipo-comp-description"]/pre/text()')[0]
-        describe_more = xml.xpath('//div[@id="read_more_div_toggle1"]/pre/text()')[0]
-        company_description = describe_main + describe_more
-        with open(FILE_PATH + cik + '_company_description.txt', 'wb') as f:
-            f.write(company_description.encode('utf-8'))
-
-        return company_overview_dict
-
-    except:
-        print('Error while reading overview tab for:' + overview_url)
-        traceback.print_exc()
-
-def scrape_financials_and_filings(financials_url):
-
-    try:
-        html = requests.get(financials_url).text
-        xml = etree.HTML(html)
-
-        financials_dict = {}
-        financials_rows = []
-        fxpath = '//div[@class="genTable"]/div[@class="{X}"]/table//tr'
-        for xtable in ["floatL width marginR15px", "floatL width"]:
-            financials_rows += xml.xpath(fxpath.format(X=xtable))
-
-        if not financials_rows:
-            for xtable in ["left-table-wrap", "right-table-wrap"]:
-                financials_rows += xml.xpath(fxpath.format(X=xtable))
-
-        for row in financials_rows:
-            rkey = row.xpath('.//td[1]//text()')[0]
-            financials_dict[rkey] = row.xpath('.//td[2]//text()')[0]
-
-        ### Reading filing
-        filing_rows = xml.xpath('//div[@class="tab2"]/div[@class="genTable"]/table//tr')
-        filings = []
-        for row in filing_rows:
-            if not row.xpath('.//td/text()')[:3]:
-                continue
-            filings.append(row.xpath('.//td/text()')[:3] + ["".join(row.xpath('.//td[4]/a/@href'))])
-    except:
-        print('Error while reading financials tab for:' + cik)
-        traceback.print_exc()
-
-    return financials_dict, filings
-
-def scrape_experts(experts_url):
-    ### Reading experts tab
-    html = requests.get(experts_url).text
-    xml = etree.HTML(html)
-    experts_dict = {}
-    experts_rows = xml.xpath('//div[@class="tab3"]/div[@class="genTable"]/table//tr')
-
-    for row in experts_rows:
-        # row_url = row.xpath('.//td/a')[0].attrib['href'] if row.xpath('.//td/a') else ''
-        exp_type = row.xpath('.//td[1]/text()')[0]
-        if exp_type in experts_dict:
-            experts_dict[exp_type] = experts_dict[exp_type] + [row.xpath('.//td[2]//text()')[0]]
-        else:
-            experts_dict[exp_type] = [row.xpath('.//td[2]//text()')[0]]
-
-    return experts_dict
-
-def extract_SIC(final_dict):
-    "Extracts SIC codes from SEC edgar"
-
     with ThreadPoolExecutor(max_workers=N) as exec:
         json_result = exec.map(extract_NASDAQ_IPO_data, [iter(links)]*N)
         final_dict  = reduce(lambda d1, d2: dict(d1, **d2), json_result)
     return final_dict
 
-    def scrape_SIC(cik):
-        url = 'https://www.sec.gov/cgi-bin/browse-edgar?CIK={}&Find=Search&owner=exclude&action=getcompany'.format(cik)
-        res = requests.get(url)
-        SIC = etree.HTML(res.text).xpath('//html/body/div/div/div/p/a/text()')[0]
-        if 3 < len(SIC) < 8:
-            return SIC
 
-    ciks = final_dict.keys()
-    no_sic = []
-    for cik in ciks:
-        if 'Metadata' in final_dict[cik].keys():
-            if 'SIC code' in final_dict[cik]['Metadata']:
-                if final_dict[cik]['Metadata']['SIC code'] != "NA":
-                    print('Already had SIC', final_dict[cik]['Metadata']['SIC code'])
+
+    def scrape_company_overview(overview_url):
+
+        ### Reading Company Overview tab
+        try:
+            html = requests.get(overview_url).text
+            xml = etree.HTML(html)
+
+            company_overview_dict = {}
+            company_overview_rows = xml.xpath('//div[@id="infoTable"]/table//tr')
+            for row in company_overview_rows:
+                company_overview_dict[row.xpath('.//td[1]/text()')[0]] = ' '.join(row.xpath('.//td[2]//text()'))
+            cik = company_overview_dict['CIK'][3:]
+
+            ### Reading use of proceeds
+            use_of_proceeds = "".join(xml.xpath('//div[@class="infoTable_2"]/pre/text()'))
+            with open(FILE_PATH +  cik + '_use_of_proceeds.txt', 'wb') as f:
+                f.write(use_of_proceeds.encode('utf-8'))
+
+            ### Reading company description
+            describe_main = xml.xpath('//div[@class="ipo-comp-description"]/pre/text()')[0]
+            describe_more = xml.xpath('//div[@id="read_more_div_toggle1"]/pre/text()')[0]
+            company_description = describe_main + describe_more
+            with open(FILE_PATH + cik + '_company_description.txt', 'wb') as f:
+                f.write(company_description.encode('utf-8'))
+
+            return company_overview_dict
+
+        except:
+            print('Error while reading overview tab for:' + overview_url)
+            traceback.print_exc()
+
+    def scrape_financials_and_filings(financials_url):
+
+        try:
+            html = requests.get(financials_url).text
+            xml = etree.HTML(html)
+
+            financials_dict = {}
+            financials_rows = []
+            fxpath = '//div[@class="genTable"]/div[@class="{X}"]/table//tr'
+            for xtable in ["floatL width marginR15px", "floatL width"]:
+                financials_rows += xml.xpath(fxpath.format(X=xtable))
+
+            if not financials_rows:
+                for xtable in ["left-table-wrap", "right-table-wrap"]:
+                    financials_rows += xml.xpath(fxpath.format(X=xtable))
+
+            for row in financials_rows:
+                rkey = row.xpath('.//td[1]//text()')[0]
+                financials_dict[rkey] = row.xpath('.//td[2]//text()')[0]
+
+            ### Reading filing
+            filing_rows = xml.xpath('//div[@class="tab2"]/div[@class="genTable"]/table//tr')
+            filings = []
+            for row in filing_rows:
+                if not row.xpath('.//td/text()')[:3]:
                     continue
+                filings.append(row.xpath('.//td/text()')[:3] + ["".join(row.xpath('.//td[4]/a/@href'))])
+        except:
+            print('Error while reading financials tab for:' + cik)
+            traceback.print_exc()
 
-        SIC_code = scrape_SIC(cik)
-        if SIC_code:
-            if 'Metadata' not in final_dict[cik]:
-                final_dict[cik]['Metadata'] = {'SIC code': 'NA'}
-            final_dict[cik]['Metadata']['SIC code'] = SIC_code
-            print("SEC Edgar ->", final_dict[cik]['Metadata']['SIC code'])
-            continue
-    return final_dict
+        return financials_dict, filings
+
+    def scrape_experts(experts_url):
+        ### Reading experts tab
+        html = requests.get(experts_url).text
+        xml = etree.HTML(html)
+        experts_dict = {}
+        experts_rows = xml.xpath('//div[@class="tab3"]/div[@class="genTable"]/table//tr')
+
+        for row in experts_rows:
+            # row_url = row.xpath('.//td/a')[0].attrib['href'] if row.xpath('.//td/a') else ''
+            exp_type = row.xpath('.//td[1]/text()')[0]
+            if exp_type in experts_dict:
+                experts_dict[exp_type] = experts_dict[exp_type] + [row.xpath('.//td[2]//text()')[0]]
+            else:
+                experts_dict[exp_type] = [row.xpath('.//td[2]//text()')[0]]
+
+        return experts_dict
+
+
+
 
 def get_s1_filings(FINALJSON):
-
+    """Downloads all filings for all firms (ciks) in FINALJSON.
+    Makes system calls to wget, downloads gzipped filings and extracts.
+    On keyboard interupt, deletes half downloaded file
+    """
     import subprocess
-    filings = {cik:FINALJSON[cik]['Filing'] for cik,vals in FINALJSON.items()}
+    import gzip
 
+    filings = {cik:FINALJSON[cik]['Filing'] for cik,vals in FINALJSON.items()}
     error_urls = []
     filings_ = list(filings.items())
+    # cik = 1326801; filelist = FINALJSON[cik]['Filing'][0] # FB test
     for cik, filelist in filings_:
         for filing in filelist:
             try:
-                url = 'www.nasdaq.com/markets/ipos/' + filing[3]
+                url = 'http://www.nasdaq.com/markets/ipos/' + filing[3].replace('/markets/ipos/','')
                 savedir = os.path.join(BASEDIR , "filings", cik)
                 filename = os.path.join(savedir, filing[3].split('/')[-1])
             except AttributeError:
@@ -213,12 +189,24 @@ def get_s1_filings(FINALJSON):
             # NASDAQ filings are tagged and cleaner than EDGAR filings.
             try:
                 os.chdir(savedir)
-                usr_agent = 'Mozilla/5.0 (X11; Linux x86_64; rv:12.0) Gecko/20100101 Firefox/21.0'
-                command = 'wget --user-agent="{}" "{}"'.format(usr_agent, url)
+                usr_agent = 'python-requests/2.2.1 CPython/3.4.0 Darwin/13.3.0'
+                command = '''wget \
+                            --header="User-Agent: {usr_agent}" \
+                            --header="Connection: Keep-Alive"  \
+                            --header="Accept-Encoding: gzip, deflate, compress" \
+                            --header="Accept: */*" \
+                            "{url}"  '''.format(usr_agent=usr_agent, url=url)
+
                 exit_status = os.system(command)
-                if exit_status == 0:
+                if exit_status==0:
+                    content = gzip.open(filename, 'rb').read()
+                    with open(filename, 'wb') as f:
+                        f.write(content)
+                        print('=> Unzipped {} as HTML file of size: {:,} kbs\n\n'.format(
+                            filename[-28:],os.path.getsize(filename)))
                     continue
-                elif exit_status == 2048:
+
+                elif exit_status==2048:
                     error_urls.append((cik, url))
                 else:
                     if os.path.exists(filename):
@@ -240,10 +228,11 @@ def get_s1_filings(FINALJSON):
 
 
 def final_json_clean_data(FINALJSON=FINALJSON):
+    "Conforms headings on JSON data downloaded from NASDAQ"
 
-    for cik in FINALJSON:
-        if 'Metadata' not in FINALJSON[cik]:
-            FINALJSON[cik]['Metadata'] = {}
+    # for cik in FINALJSON:
+    #     if 'Metadata' not in FINALJSON[cik]:
+    #         FINALJSON[cik]['Metadata'] = {}
 
     # Fixes Text File descriptions
     for cik in FINALJSON:
@@ -253,7 +242,6 @@ def final_json_clean_data(FINALJSON=FINALJSON):
             FINALJSON[cik].pop('Company_description')
         if 'Use of Proceeds' in FINALJSON[cik].keys():
             FINALJSON[cik].pop('Use of Proceeds')
-
 
     # Fixes 'Employees (as of MM-DD-YYYY)'
     for cik in FINALJSON:
@@ -265,19 +253,52 @@ def final_json_clean_data(FINALJSON=FINALJSON):
     for cik in FINALJSON:
         FINALJSON[cik]['Metadata']['Number of Filings'] = len(FINALJSON[cik]['Filing'])
 
+    for cik in FINALJSON:
+        assert len(cik) == 7
+        FINALJSON[cik]['Metadata']['CIK'] = cik
+
     return FINALJSON
 
 
+def get_compustat_metadata():
 
+    compustat = pd.read_csv("data/compustat-id.csv")
+    compustat.set_index("cusip", inplace=True)
+    # tpci: Issue Type
+    # stko: Stock Ownership Code: public firm or subsidiary or LBO
+    issue_types = {
+        '%': 'ETF',
+        '0': 'Common Ordinary Shares',
+        '1': 'Preferred Shares',
+        '2': 'Warrant/Right',
+        '4': 'Unit',
+        'F': 'ADR',
+        'G': 'Convertible Preferred',
+        'R': 'Structured Product',
+        'S': 'General Service Administration',
+    }
+    ownership_types = {
+        0: 'Public Company',
+        1: 'Subsidiary of public company',
+        2: 'Subsidiary of private company',
+        3: 'Public company of small exchange', # OTCBB, pinkslips
+        4: 'Levered Buyout'
+    }
 
-    # for cik in FINALJSON:
-    #     FINALJSON[cik]['Metadata']['Days from Pricing to Listing'] = len(FINALJSON[cik]['Filing'])
-    #     first_pricing = aget(FINALJSON[cik]['Filing'][0][2])
-    #     second_pricing = aget(FINALJSON[cik]['Filing'][XXX][2])
+    compustat_cutoff_date = arrow.get('2014-08-24')
 
-    # with open('final_json.txt', 'w') as f:
-    #     f.write(json.dumps(FINALJSON, indent=4, sort_keys=True))
-
+    badciks = []
+    for cik in FULLJSON:
+        try:
+            cusip = FULLJSON[cik]['Metadata']['CUSIP']
+            assert len(cusip) == 9
+            tpci = compustat.loc[cusip]['tpci'].iloc[0]
+            FULLJSON[cik]['Metadata']['Issue Type Code'] = tpci
+            FULLJSON[cik]['Metadata']['Issue Type'] = issue_types[tpci]
+        except KeyError:
+            ipo_date = FULLJSON[cik]['Company Overview']['Status']
+            print("{}: {} {}".format(cik, firmname(cik), ipo_date))
+            badciks.append(cik)
 
 
 
@@ -291,6 +312,12 @@ if __name__=='__main__':
     links = list(zip(df.index, df['URL']))
     # final_dict = extract_NASDAQ_IPO_data_threaded(links)
 
+
+    FULLJSON = json.loads(open('full_json.txt').read())
+    # with open('full_json.txt', 'w') as f:
+    #     f.write(json.dumps(FULLJSON, indent=4, sort_keys=True))
+
+
     # ### Writing json file
     # with open('final_dict.txt', 'w') as myfile:
     #   myfile.write(json.dumps(final_dict, indent=4, sort_keys=True))
@@ -300,75 +327,40 @@ if __name__=='__main__':
 
 
 
-    # X1) Get S-1 filings from NASDAQ
-    # X2) GET SIC codes from edgar / rawjson.txt
-    # X3) Filter bad SIC codes
-    # X4) Match CRSP/Yahoo Firms with NASDAQ firms for opening/close prices
-    # X5) Get WRDS access and US CRSP dataset for stock prices.
-    # X6) Fix Gtrends names, start scraping attention
-    # X7) Make sure equity offer is actually IPO (check CUSIP)
-    # X8) Get partial price adjustments and put in "Filings"
-    # 9) Check Spinoff IPOs
 
 
 
+    ######## NEW BAD INDUSTRIES ######################################
+    # bad_sic = [
+    #     '6021', '6022', '6035', '6036', '6111', '6199', '6153',
+    #     '6159', '6162', '6163', '6172', '6189', '6200', '6022',
+    #     '6221', '6770', '6792', '6794', '6795', '6798', '6799',
+    #     '8880', '8888', '9721', '9995'
+    #     ]
+    # {cik:firmname(cik) for cik in FINALJSON if FINALJSON[cik]['Metadata']['SIC'] == '6021'}
+    # FINALJSON = {cik:vals for cik,vals in FINALJSON.items()
+    #              if vals['Metadata']['SIC'] not in bad_sic}
+    ###################################################################
 
-    # share overhang
-    # SIC industry returns
-    # IPO cycle variables
-    # Gtrends variables
-    # underwriter rank (average lead underwriters)
-    # no. underwriters
-    # VC dummy (crunchbase)
-    # confidential IPO
-    # EPS
-
-
-
-
-
-############ Remove BAD EXPERTS
-    # badciks = []
-    # badnames = []
-    # for cik in FINALJSON.keys():
-    #     try:
-    #         islink = FINALJSON[cik]['Experts']['Auditor'][1]
-    #         if "http://www.nasdaq.com/markets/ipos" in islink:
-    #             badciks.append(cik)
-    #             badnames.append(FINALJSON[cik]['Company Overview']['Company Name'])
-    #             print(FINALJSON[cik]['Company Overview']['Company Name'],': wrong experts')
-    #     except IndexError:
-    #         continue
-
-
-    # for cik, firm in zip(badciks, badnames):
-    #     i, url = next(df[df['Company Name']==firm]['URL'].items())
-    #     experts_url = url + "?tab=experts"
-    #     experts_dict = scrape_experts(experts_url)
-    #     print(experts_dict)
-    #     FINALJSON[cik]['Experts'] = experts_dict
+    ######## SIC CODES
+    # SIC_Code|AD_Office|Industry_Title
+    # 6035|7|SAVINGS INSTITUTION, FEDERALLY CHARTERED
+    # 6036|7|SAVINGS INSTITUTIONS, NOT FEDERALLY CHARTERED
+    # 6099|7|FUNCTIONS RELATED TO DEPOSITORY BANKING, NEC
+    # 6111|12|FEDERAL & FEDERALLY-SPONSORED CREDIT AGENCIES
+    # 6153|7|SHORT-TERM BUSINESS CREDIT INSTITUTIONS
+    # 6159|7|MISCELLANEOUS BUSINESS CREDIT INSTITUTION
+    # 6162|7|MORTGAGE BANKERS & LOAN CORRESPONDENTS
+    # 6163|7|LOAN BROKERS
+    # 6172|7|FINANCE LESSORS
+    # 6189|OSF|ASSET-BACKED SECURITIES
+    # 6200|8|SECURITY & COMMODITY BROKERS, DEALERS, EXCHANGES & SERVICES
+    # 6221|8|COMMODITY CONTRACTS BROKERS & DEALERS
+    # 6770|All|BLANK CHECKS
+    # 6792|4|OIL ROYALTY TRADERS
+    # 6794|3|PATENT OWNERS & LESSORS
+    # 6795|9|MINERAL ROYALTY TRADERS
+    # 6798|8|REAL ESTATE INVESTMENT TRUSTS
+    # 6799|8|INVESTORS, NEC
 
 
-
-
-
-######## SIC CODES
-# SIC_Code|AD_Office|Industry_Title
-# 6035|7|SAVINGS INSTITUTION, FEDERALLY CHARTERED
-# 6036|7|SAVINGS INSTITUTIONS, NOT FEDERALLY CHARTERED
-# 6099|7|FUNCTIONS RELATED TO DEPOSITORY BANKING, NEC
-# 6111|12|FEDERAL & FEDERALLY-SPONSORED CREDIT AGENCIES
-# 6153|7|SHORT-TERM BUSINESS CREDIT INSTITUTIONS
-# 6159|7|MISCELLANEOUS BUSINESS CREDIT INSTITUTION
-# 6162|7|MORTGAGE BANKERS & LOAN CORRESPONDENTS
-# 6163|7|LOAN BROKERS
-# 6172|7|FINANCE LESSORS
-# 6189|OSF|ASSET-BACKED SECURITIES
-# 6200|8|SECURITY & COMMODITY BROKERS, DEALERS, EXCHANGES & SERVICES
-# 6221|8|COMMODITY CONTRACTS BROKERS & DEALERS
-# 6770|All|BLANK CHECKS
-# 6792|4|OIL ROYALTY TRADERS
-# 6794|3|PATENT OWNERS & LESSORS
-# 6795|9|MINERAL ROYALTY TRADERS
-# 6798|8|REAL ESTATE INVESTMENT TRUSTS
-# 6799|8|INVESTORS, NEC
