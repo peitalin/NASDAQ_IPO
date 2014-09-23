@@ -22,6 +22,10 @@ FILEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ", "Filing
 FINALJSON = json.loads(open(BASEDIR + '/final_json.txt').read())
 
 
+def testfiles(cik):
+    return [x for x in glob.glob(os.path.join(FILEDIR, cik) + '/*') if 'filing.ashx?' in x]
+
+
 def as_cash(string):
     if '$' not in string:
         return None
@@ -163,8 +167,6 @@ def get_price_range(filename):
 
 
 
-def testfiles(cik):
-    return [x for x in glob.glob(os.path.join(FILEDIR, cik) + '/*') if 'filing.ashx?' in x]
 
 
 
@@ -199,7 +201,6 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
         pmax = max(all_prices) if all_prices else None
         return pmax, pmin
 
-
     missing_ciks = set()
     skipped_ciks = set()
     abnormal_ciks = set()
@@ -212,7 +213,6 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
             print("Skipping %s %s" % (cik, coname))
             skipped_ciks |= {cik}
             continue
-
 
         print('\n==> Getting Price Range for: %s %s' % (cik, coname))
         cik, tf, price_range = fdir_pricerange(cik)
@@ -235,8 +235,6 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
         pprint(price_range)
         print('=== Updated price range for %s ===\n' % cik)
 
-
-    # abnormal_ciks = {'1024305', '1062781', '1117106', '1161448', '1208208', '1271024', '1274494', '1307954', '1311596', '1326732', '1335793', '1347557', '1361983', '1365742', '1388319', '1395213', '1401257', '1411158', '1419945', '1442596', '1467858', '1474952', '1477156', '1477641'}
 
 
 
@@ -341,8 +339,6 @@ def is_spinoff(cik):
             return True
     return False
 
-
-
 def spinoff_filter():
 
     spinoffs = {
@@ -369,7 +365,6 @@ def spinoff_filter():
             continue
         else:
             FINALJSON[cik]['Metadata']['Spinoff'] = is_spinoff(cik)
-
 
     # spinoffs.update({cik:firmname(cik) for cik in ciks[1200:] if is_spinoff(cik)})
 
