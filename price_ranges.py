@@ -1,39 +1,37 @@
 
-import os, time, re, string, json, glob
-import dateutil.parser
-import pandas as pd
+import os
+import re
+import json
+import glob
+
 import requests
 import arrow
+import pandas as pd
 import numpy as np
 
-from string         import capwords
 from lxml           import etree, html
-from itertools      import *
-from functools      import reduce
 from pprint         import pprint
-from subprocess     import Popen, PIPE
 from IPython        import embed
-from widgets        import fix_bad_str, fix_dollars, view_filing
-from concurrent.futures import ThreadPoolExecutor
+from widgets        import fix_bad_str, fix_dollars, \
+                        view_filing, as_cash, write_FINALJSON
+
 
 DEBUG = True
 BASEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ")
 FILEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ", "Filings")
 FINALJSON = json.loads(open(BASEDIR + '/final_json.txt').read())
 
+aget = lambda x: arrow.get(x, 'M/D/YYYY')
+conames_ciks = {cik:FINALJSON[cik]['Company Overview']['Company Name'] for cik in FINALJSON}
+firmname = lambda cik: conames_ciks[cik]
+get_cik = lambda firm: [x[0] for x in conames_ciks.items() if x[1].lower().startswith(firm)][0]
 
-def testfiles(cik):
-    return [x for x in glob.glob(os.path.join(FILEDIR, cik) + '/*') if 'filing.ashx?' in x]
 
-
-def as_cash(string):
-    if '$' not in string:
-        return None
-    string = string.replace('$','').replace(',','')
-    return float(string) if string else None
 
 
 def parse_section(html):
+    """Looks through efx_elem nodes for price range elements to parse.
+    Yields sentences to parse_sentence() to check for price ranges"""
 
     sub_headers = ["efx_subject_stock_info", "",
                    "efx_the_offering",
@@ -55,14 +53,14 @@ def parse_section(html):
 
 
 def parse_table(html):
-    "Looks through the first 3 tables for IPO prices"
+    "Looks through the first 3 tables for IPO price ranges."
 
-    offer_price = re.compile(r'[Oo]ffering [Pp]rice')
-    common_stock = re.compile(r'[Cc]ommon [Ss]tock')
+    offer_price = re.compile(r'[Oo]ffering\s*[Pp]rice')
+    common_stock = re.compile(r'[Cc]ommon\s*[Ss]tock')
     per_share = re.compile(r'(^[Pp]er [Ss]hare|Per ADS)$')
     earnings = re.compile(r'[Ee]arnings')
 
-    for N in range(1,4):
+    for N in range(1,6):
         # Look at first 3 efx_tables with: <div>, <table>, <center> elems
         xtable = '//body/efx_form//efx_unidentified_table[{N}]/*[self::div or self::table or self::center]//tr/descendant::*/text()'
         efx_table_text = html.xpath(xtable.format(N=N))
@@ -77,18 +75,13 @@ def parse_table(html):
                     next_elem_is_IPO_price = True
                     continue
             if next_elem_is_IPO_price and s.startswith('$'):
+                # print(s)
                 yield '<Table>: Initial public offering price per share is ' + s
                 break
 
 
 def parse_sentence(sentence):
-
-    def surround_words(sentence, re_pattern, n):
-        """retrieves n words either side of price"""
-        word = r"\W*([\w]+)"
-        oprice = r"\$\d*[\.]?\d{0,2}"
-        regexp = r'{}\W*{}{}'.format(word*n, re_pattern.pattern, word*n)
-        return re.search(regexp, sentence).group()
+    "Parses sentence/paragraph for IPO price ranges and returns a price range"
 
     # Filter options, preferreds, convertibles
     ex_option = re.compile(r"[Ee]xercise\s*[Pp]rice")
@@ -100,7 +93,9 @@ def parse_sentence(sentence):
     # Check is IPO relevant paragraph
     is_an_ipo = re.compile(r"[Ii]nitial\s+[Pp]ublic\s+[Oo]ffering")
     common_stock = re.compile(r"common stock in the offering")
-    no_public = re.compile(r"no\s*(established)? public market")
+    no_public = re.compile(r"(no\s*(established)?\s*public\s*(trading)?\s*market" +
+                           r"|no\s*current\s*market\s*for\s*our\s*([Cc]ommon)?\s*[Ss]tock"
+                           r"|not been a public market for our [Cc]ommon\s*[Ss]tock)")
 
     # price extraction rules
     price_rng = re.compile(r"(\$\d*[\.]?\d*\s+[Aa]nd\s+(U[\.]?S)?\$\d*[\.]?\d*\s[Mm][i][l]" + r"|\$\d*[\.]?\d*\s+[Aa]nd\s+(U[\.]?S)?\$\d*[\.]?\d*)")
@@ -124,7 +119,6 @@ def parse_sentence(sentence):
             return None # 'Fair value' hypothetical prices
 
         if price_rng.search(s):
-            # if DEBUG: print(surround_words(s, oprice, 4))
             offer_prices = price_types.findall(price_rng.search(s).group())
             if any(['mil' in x for x in offer_prices]):
                 return None
@@ -169,9 +163,9 @@ def get_price_range(filename):
 
 
 
-
 def extract_all_price_range(ciks, FINALJSON=FINALJSON):
-    "Parses and extracts all price ranges from all filings for all firm ciks."
+    """Parses and extracts all price ranges from all filings for all firm ciks.
+    Modifies FINALJSON dictionary in-place."""
 
     def fdir_pricerange(cik):
         "For a given cik ID, gets all IPO filings from filing directory."
@@ -209,12 +203,19 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
     ciks = sorted(list(set(FINALJSON.keys())))
     for i, cik in enumerate(ciks):
         coname = FINALJSON[cik]['Company Overview']['Company Name']
-        if len(FINALJSON[cik]['Filing'][0]) > 4:
+
+        # if len(FINALJSON[cik]['Filing'][0]) > 4:
+        #     print("Skipping %s %s" % (cik, coname))
+        #     skipped_ciks |= {cik}
+        #     continue
+
+        if len([as_cash(s[4][0]) for s in FINALJSON[cik]['Filing'] if as_cash(s[4][0])]) > 1:
             print("Skipping %s %s" % (cik, coname))
             skipped_ciks |= {cik}
             continue
 
-        print('\n==> Getting Price Range for: %s %s' % (cik, coname))
+
+        print("\n==> Getting Price Range for: '%s' # %s" % (cik, coname))
         cik, tf, price_range = fdir_pricerange(cik)
         if not tf:
             print("Missing filings for {}".format(coname))
@@ -250,26 +251,14 @@ def print_pricerange(s):
 # '1467858' -> GM
 
 
-def firmname(cik):
-    return FINALJSON[cik]['Company Overview']['Company Name']
 
 
+def testfiles(cik):
+    return [x for x in glob.glob(os.path.join(FILEDIR, cik) + '/*') if 'filing.ashx?' in x]
 
 
 
 if __name__=='__main__':
-
-    ######## NEW BAD INDUSTRIES ######################################
-    # bad_sic = [
-    #     '6021', '6022', '6035', '6036', '6111', '6199', '6153',
-    #     '6159', '6162', '6163', '6172', '6189', '6200', '6022',
-    #     '6221', '6770', '6792', '6794', '6795', '6798', '6799',
-    #     '8880', '8888', '9721', '9995'
-    #     ]
-    # {cik:firmname(cik) for cik in FINALJSON if FINALJSON[cik]['Metadata']['SIC'] == '6021'}
-    # FINALJSON = {cik:vals for cik,vals in FINALJSON.items()
-    #              if vals['Metadata']['SIC'] not in bad_sic}
-    ###################################################################
 
     # with open('final_json.txt', 'w') as f:
     #     f.write(json.dumps(FINALJSON, indent=4, sort_keys=True))
@@ -286,85 +275,28 @@ if __name__=='__main__':
     cik = '1499934' # country-style
     cik = '1468174' # hyatt hotels
     cik = '1485538' # Ossen innovation -> good F-1 filing example
+
+
     # problem firms
     cik = '1376972' # home inns and hotels mgmt, F-1 foreign listings
     cik = '1407031' # golden pond (warrant filing)
     cik = '1544856' # CENCOSUD SA'
+    cik = '0700923' # MYR Group
+    cik = '1575793' # ENERGOUS CORP
+    cik = '1324479' # AMERICAN COMMERCIAL LINES INC.
+    cik = '1537435' # TECOGEN INC
+    cik = '1379009' # GAZIT-GLOBE LTD # Israeli firm, quotes Tel Aviv prices instead of price range
+
+
     cik = '1175685' # Bladelogic
-    cik = '1271024' # LinkedIn
     cik = '1500435' # GoPro
-    cik = '1345016' # Yelp!
-    cik = '1315657' # 'XOOM CORP'
-    cik = '1350031' # Embarq -> all none
+    cik = '1271024' # LinkedIn
 
     tf = glob.glob(os.path.join(FILEDIR, cik) + '/*')
     price_range = [get_price_range(f) for f in tf]
-
-    # ciks = iter(FINALJSON.keys())
     ciks = sorted(FINALJSON.keys())
 
-    company     = pd.DataFrame([FINALJSON[cik]['Company Overview']  for cik in ciks], ciks)
-    financials  = pd.DataFrame([FINALJSON[cik]['Financials']        for cik in ciks], ciks)
-    experts     = pd.DataFrame([FINALJSON[cik]['Experts']           for cik in ciks], ciks)
-    metadata    = pd.DataFrame([FINALJSON[cik]['Metadata']          for cik in ciks], ciks)
-    filings     = pd.DataFrame([FINALJSON[cik]['Filing']            for cik in ciks], ciks)
-    open_prices = pd.DataFrame([FINALJSON[cik]['Opening Prices']    for cik in ciks], ciks)
-
-
     # Units, ADRs, etc
-    # metadata[metadata['Issue Type Code']!='0']
+    # metadata[metadata['Issue Type Code'] != '0']
 
-
-
-
-    ## get_s1_filings
-    ## get price_ranges for new firms
-    ## reconstuct dataframe, keeping BAD_SIC and units, ADRs etc.
-    ## finally after getting new DF, save full_df and slowly remove
-    ## bad SIC codes, and units/ADRs
-
-
-
-def is_spinoff(cik):
-    " Greps through S-1 filings to see if IPO is a spin-off"
-
-    from subprocess import Popen, PIPE
-    filingdir = glob.glob(os.path.join(FILEDIR, cik) + '/*')
-    for filing in filingdir[-3:]:
-        grep_str = "egrep '( our spin-off|the spin-off will)' {}".format(filing)
-        std_out = Popen(grep_str, shell=True, stdout=PIPE).stdout.read()
-        if std_out:
-            print("{}: {} is a spin-off".format(firmname(cik), cik))
-            if DEBUG: print(std_out.decode('latin-1').replace('&nbsp;',''))
-            return True
-    return False
-
-def spinoff_filter():
-
-    spinoffs = {
-        '1323885': 'ATRICURE, INC.',
-        '1405082': 'TRIPLECROWN ACQUISITION CORP.',
-        '1432732': 'TRIVASCULAR TECHNOLOGIES, INC.',
-        '1597033': 'SABRE CORP',
-        '1350031': 'EMBARQ CORP',
-        '1368802': 'ATLAS ENERGY RESOURCES, LLC',
-        '1506932': 'LONE PINE RESOURCES INC.',
-        '1345111': 'TIM HORTONS INC.',
-        '1471055': 'BANCO SANTANDER (BRASIL) S.A.',
-        '1295172': 'RISKMETRICS GROUP INC',
-        '1392522': 'FREESCALE SEMICONDUCTOR, LTD.',
-        '1386787': 'VICTORY ACQUISITION CORP',
-        '1308208': 'UNIVERSAL TRUCKLOAD SERVICES, INC.',
-        '1365101': 'PRIMO WATER CORP',
-        '1322734': 'ADVANCED LIFE SCIENCES HOLDINGS, INC.'
-    }
-
-    for cik in FINALJSON:
-        if cik in spinoffs:
-            FINALJSON[cik]['Metadata']['Spinoff'] = True
-            continue
-        else:
-            FINALJSON[cik]['Metadata']['Spinoff'] = is_spinoff(cik)
-
-    # spinoffs.update({cik:firmname(cik) for cik in ciks[1200:] if is_spinoff(cik)})
 
