@@ -16,7 +16,6 @@ from concurrent.futures import ThreadPoolExecutor
 from IPython            import embed
 
 
-
 N = 10
 FILE_PATH = 'text_files/'
 BASEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ")
@@ -230,9 +229,9 @@ def get_s1_filings(FINALJSON):
 def final_json_clean_data(FINALJSON=FINALJSON):
     "Conforms headings on JSON data downloaded from NASDAQ"
 
-    # for cik in FINALJSON:
-    #     if 'Metadata' not in FINALJSON[cik]:
-    #         FINALJSON[cik]['Metadata'] = {}
+    for cik in FINALJSON:
+        if 'Metadata' not in FINALJSON[cik]:
+            FINALJSON[cik]['Metadata'] = {}
 
     # Fixes Text File descriptions
     for cik in FINALJSON:
@@ -258,48 +257,6 @@ def final_json_clean_data(FINALJSON=FINALJSON):
         FINALJSON[cik]['Metadata']['CIK'] = cik
 
     return FINALJSON
-
-
-def get_compustat_metadata():
-
-    compustat = pd.read_csv("data/compustat-id.csv")
-    compustat.set_index("cusip", inplace=True)
-    # tpci: Issue Type
-    # stko: Stock Ownership Code: public firm or subsidiary or LBO
-    issue_types = {
-        '%': 'ETF',
-        '0': 'Common Ordinary Shares',
-        '1': 'Preferred Shares',
-        '2': 'Warrant/Right',
-        '4': 'Unit',
-        'F': 'ADR',
-        'G': 'Convertible Preferred',
-        'R': 'Structured Product',
-        'S': 'General Service Administration',
-    }
-    ownership_types = {
-        0: 'Public Company',
-        1: 'Subsidiary of public company',
-        2: 'Subsidiary of private company',
-        3: 'Public company of small exchange', # OTCBB, pinkslips
-        4: 'Levered Buyout'
-    }
-
-    compustat_cutoff_date = arrow.get('2014-08-24')
-
-    badciks = []
-    for cik in FULLJSON:
-        try:
-            cusip = FULLJSON[cik]['Metadata']['CUSIP']
-            assert len(cusip) == 9
-            tpci = compustat.loc[cusip]['tpci'].iloc[0]
-            FULLJSON[cik]['Metadata']['Issue Type Code'] = tpci
-            FULLJSON[cik]['Metadata']['Issue Type'] = issue_types[tpci]
-        except KeyError:
-            ipo_date = FULLJSON[cik]['Company Overview']['Status']
-            print("{}: {} {}".format(cik, firmname(cik), ipo_date))
-            badciks.append(cik)
-
 
 
 
@@ -332,7 +289,7 @@ if __name__=='__main__':
 
     ######## NEW BAD INDUSTRIES ######################################
     # bad_sic = [
-    #     '6021', '6022', '6035', '6036', '6111', '6199', '6153',
+    #     '6021', '6022', '6035', '6036', '6111',   '6153',
     #     '6159', '6162', '6163', '6172', '6189', '6200', '6022',
     #     '6221', '6770', '6792', '6794', '6795', '6798', '6799',
     #     '8880', '8888', '9721', '9995'
@@ -342,8 +299,19 @@ if __name__=='__main__':
     #              if vals['Metadata']['SIC'] not in bad_sic}
     ###################################################################
 
+
+    ########## BAD IPOS
+    ###### No share offerings?
+    # bad_ipos: ['1022345', '1314475', '1411303']
+    # hidden unit trusts
+    # ['1255474', '1557421'] # WHITING PETROLEUM CORP, Igynta
+
+
+
     ######## SIC CODES
     # SIC_Code|AD_Office|Industry_Title
+    # 6021|7|NATIONAL COMMERCIAL BANKS
+    # 6022|7|STATE COMMERCIAL BANKS
     # 6035|7|SAVINGS INSTITUTION, FEDERALLY CHARTERED
     # 6036|7|SAVINGS INSTITUTIONS, NOT FEDERALLY CHARTERED
     # 6099|7|FUNCTIONS RELATED TO DEPOSITORY BANKING, NEC
