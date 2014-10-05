@@ -98,14 +98,14 @@ def parse_sentence(sentence):
                            r"|not been a public market for our [Cc]ommon\s*[Ss]tock)")
 
     # price extraction rules
-    price_rng = re.compile(r"(\$\d*[\.]?\d*\s+[Aa]nd\s+(U[\.]?S)?\$\d*[\.]?\d*\s[Mm][i][l]" + r"|\$\d*[\.]?\d*\s+[Aa]nd\s+(U[\.]?S)?\$\d*[\.]?\d*)")
+    price_rng = re.compile(r"(\$\s{0,1}\d*[\.]?\d*\s+[Aa]nd\s+(U[\.]?S)?\s*\$\s{0,1}\d*[\.]?\d*\s[Mm][i][l]" + r"|\$\d*[\.]?\d*\s+[Aa]nd\s+(U[\.]?S)?\$\d*[\.]?\d*)")
     prices_strict = re.compile(r"(offering price (of|is) \$\d+[\.]\d+ per (share|ADS)" +
                                r"|offered at a price of \$\d+[\.]\d+ per share" +
                                r"|offering price per (share|ADS) is \$\d+[\.]\d+" +
                                r"|offering price (of the|per) ADS[s]? is (U[\.]?S)?\$\d+[\.]\d+)")
     price_types = re.compile(r"(\$\d*[\.]?\d{0,2}....|\$\d*[\.]?\d{0,2})")
     # price_rng and price_types catches $19.00 mil,
-    oprice = re.compile(r"\$\d*[\.]?\d{0,2}")
+    oprice = re.compile(r"\$\s{0,1}\d*[\.]?\d{0,2}")
 
     s = sentence
     if any([ex_option.search(s),
