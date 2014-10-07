@@ -18,11 +18,12 @@ from widgets        import fix_bad_str, fix_dollars, \
 
 DEBUG = True
 BASEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ")
-FILEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ", "Filings")
+FILEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ", "filings")
 FINALJSON = json.loads(open(BASEDIR + '/final_json.txt').read())
+FULLJSON = json.loads(open(BASEDIR + '/full_json.txt').read())
 
 aget = lambda x: arrow.get(x, 'M/D/YYYY')
-conames_ciks = {cik:FINALJSON[cik]['Company Overview']['Company Name'] for cik in FINALJSON}
+conames_ciks = {cik:FULLJSON[cik]['Company Overview']['Company Name'] for cik in FULLJSON}
 firmname = lambda cik: conames_ciks[cik]
 get_cik = lambda firm: [x[0] for x in conames_ciks.items() if x[1].lower().startswith(firm)][0]
 
@@ -59,10 +60,12 @@ def parse_table(html):
     common_stock = re.compile(r'[Cc]ommon\s*[Ss]tock')
     per_share = re.compile(r'(^[Pp]er [Ss]hare|Per ADS)$')
     earnings = re.compile(r'[Ee]arnings')
+    xtable = '//body/efx_form//efx_unidentified_table[{N}]/' + \
+             '*[self::div or self::table or self::center]' + \
+             '//tr/descendant::*/text()'
 
     for N in range(1,6):
         # Look at first 3 efx_tables with: <div>, <table>, <center> elems
-        xtable = '//body/efx_form//efx_unidentified_table[{N}]/*[self::div or self::table or self::center]//tr/descendant::*/text()'
         efx_table_text = html.xpath(xtable.format(N=N))
         efx_elems_text = fix_dollars([fix_bad_str(s) for s in efx_table_text if fix_bad_str(s)])
 
@@ -75,7 +78,7 @@ def parse_table(html):
                     next_elem_is_IPO_price = True
                     continue
             if next_elem_is_IPO_price and s.startswith('$'):
-                # print(s)
+                print(s)
                 yield '<Table>: Initial public offering price per share is ' + s
                 break
 
@@ -92,6 +95,7 @@ def parse_sentence(sentence):
 
     # Check is IPO relevant paragraph
     is_an_ipo = re.compile(r"[Ii]nitial\s+[Pp]ublic\s+[Oo]ffering")
+    offer_common = re.compile(r"[Oo]ffering shares\s*(of)?\s*common\s*stock")
     common_stock = re.compile(r"common stock in the offering")
     no_public = re.compile(r"(no\s*(established)?\s*public\s*(trading)?\s*market" +
                            r"|no\s*current\s*market\s*for\s*our\s*([Cc]ommon)?\s*[Ss]tock"
@@ -100,7 +104,7 @@ def parse_sentence(sentence):
     # price extraction rules
     price_rng = re.compile(r"(\$\s{0,1}\d*[\.]?\d*\s+[Aa]nd\s+(U[\.]?S)?\s*\$\s{0,1}\d*[\.]?\d*\s[Mm][i][l]" + r"|\$\d*[\.]?\d*\s+[Aa]nd\s+(U[\.]?S)?\$\d*[\.]?\d*)")
     prices_strict = re.compile(r"(offering price (of|is) \$\d+[\.]\d+ per (share|ADS)" +
-                               r"|offered at a price of \$\d+[\.]\d+ per share" +
+                               r"|offered\s*(for sale)?\s*at a price of \$\d+[\.]\d+ per share" +
                                r"|offering price per (share|ADS) is \$\d+[\.]\d+" +
                                r"|offering price (of the|per) ADS[s]? is (U[\.]?S)?\$\d+[\.]\d+)")
     price_types = re.compile(r"(\$\d*[\.]?\d{0,2}....|\$\d*[\.]?\d{0,2})")
@@ -114,7 +118,7 @@ def parse_sentence(sentence):
             private.search(s)]):
         return None
 
-    if is_an_ipo.findall(s) or common_stock.findall(s) or no_public.findall(s):
+    if is_an_ipo.findall(s) or common_stock.findall(s) or no_public.findall(s) or offer_common.findall(s):
         if re.findall(r'fair value', s):
             return None # 'Fair value' hypothetical prices
 
@@ -124,6 +128,7 @@ def parse_sentence(sentence):
                 return None
             else:
                 oprices = sum([oprice.findall(x) for x in offer_prices], [])
+                print(oprices)
                 test_prices = [as_cash(x) for x in oprices if as_cash(x)]
 
                 if test_prices:
@@ -142,7 +147,9 @@ def parse_sentence(sentence):
                 # finds phrases of the form "offering price of $xx.xx per share"
 
 
+
 def get_price_range(filename):
+    "Reads S-1 filings and parses for price ranges with parse_section() and parse_table() functions."
 
     with open(filename, encoding='latin-1') as f:
         html = etree.HTML(f.read())
@@ -238,8 +245,6 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
 
 
 
-
-
 def print_pricerange(s):
     if not s.isdigit():
         cik = [k for k in FINALJSON if firmname(k).lower().startswith(s.lower())][0]
@@ -249,6 +254,42 @@ def print_pricerange(s):
     pprint([[v[2], v[1], v[-1]] for v in FINALJSON[cik]['Filing']])
     print("="*40+'\n')
 # '1467858' -> GM
+
+
+
+
+def get_offered_shares(filename):
+
+    with open(filename, encoding='latin-1') as f:
+        html = etree.HTML(f.read())
+
+    for offered_shares in map(parse_shares, parse_section(html)):
+        if offered_shares:
+            return offered_shares
+
+
+
+def parse_shares(sentence):
+
+    # Check is IPO relevant paragraph
+    is_an_ipo = re.compile(r"[Ii]nitial\s+[Pp]ublic\s+[Oo]ffering")
+    common_stock = re.compile(r"common stock in the offering")
+    class_A = re.compile(r"[Cc]lass\s*[AB]\s*([Cc]ommon)?[Ss]tock")
+    no_public = re.compile(r"(no\s*(established)?\s*public\s*(trading)?\s*market" +
+                           r"|no\s*current\s*market\s*for\s*our\s*([Cc]ommon)?\s*[Ss]tock"
+                           r"|not been a public market for our [Cc]ommon\s*[Ss]tock)")
+    cshares = re.compile(r'\d{0,3}[,]?\d{0,3}[,]?\d{0,3}[,]?\d{3}\s*[Ss]hares')
+
+    s = sentence
+    if is_an_ipo.findall(s) or common_stock.findall(s) or no_public.findall(s) or class_A.findall(s):
+        if cshares.search(s):
+            return cshares.search(s).group()
+
+
+
+
+
+
 
 
 
@@ -288,15 +329,26 @@ if __name__=='__main__':
     cik = '1379009' # GAZIT-GLOBE LTD # Israeli firm, quotes Tel Aviv prices instead of price range
 
 
+    # Price less than $4
+    # cik = '1349892' # VALUERICH INC
+    # cik = '1361916' # ASIA TIME INC
+
+
     cik = '1175685' # Bladelogic
     cik = '1500435' # GoPro
     cik = '1271024' # LinkedIn
 
-    tf = glob.glob(os.path.join(FILEDIR, cik) + '/*')
-    price_range = [get_price_range(f) for f in tf]
     ciks = sorted(FINALJSON.keys())
+
 
     # Units, ADRs, etc
     # metadata[metadata['Issue Type Code'] != '0']
+    badciks = ['0860413', '1070336', '1127393', '1131312', '1287668', '1290059', '1302176', '1302324', '1303942', '1308106', '1310313', '1332174', '1336249', '1337068', '1340282', '1347426', '1349892', '1353691', '1354730', '1361916', '1370433', '1370946', '1376227', '1376556', '1378239', '1379606', '1381668', '1382230', '1399521', '1401573', '1402902', '1410402', '1412203', '1434620', '1434621', '1492915', '1507385']
 
+    bciks = iter(badciks[3:])
 
+    cik = next(bciks)
+    print("{}:{}".format(cik, firmname(cik)))
+    tf = testfiles(cik)
+    price_range = [get_price_range(f) for f in tf]
+    print(price_range)

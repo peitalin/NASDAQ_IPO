@@ -21,15 +21,16 @@ IPO_DIR = os.path.join(os.path.expanduser("~"), "Data", "IPO")
 BASEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ",)
 FILEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ", "Filings")
 FINALJSON = json.loads(open('final_json.txt').read())
+FULLJSON = json.loads(open('full_json.txt').read())
 
 aget = lambda x: arrow.get(x, 'M/D/YYYY')
-conames_ciks = {cik:FINALJSON[cik]['Company Overview']['Company Name'] for cik in FINALJSON}
+conames_ciks = {cik:FULLJSON[cik]['Company Overview']['Company Name'] for cik in FULLJSON}
 firmname = lambda cik: conames_ciks[cik]
 get_cik = lambda firm: [x[0] for x in conames_ciks.items() if x[1].lower().startswith(firm)][0]
 
 
 # None of these functions return a DF, they modify existing df.
-def df_filings():
+def df_filings(FINALJSON=FINALJSON):
     """Takes FINALJSON dataframes, gets price revision stats"""
 
     def first_price_update(dates, prices, pranges):
@@ -68,7 +69,19 @@ def df_filings():
                     'percent_final_price_revision',
                     'prange_change_first_price_update',
                     'number_of_price_updates']
-    df = pd.DataFrame([[0]*len(float_columns)]*len(filings), filings.index, columns=float_columns)
+
+    ciks = sorted(FINALJSON.keys())
+
+    company     = pd.DataFrame([FINALJSON[cik]['Company Overview']  for cik in ciks], ciks)
+    financials  = pd.DataFrame([FINALJSON[cik]['Financials']        for cik in ciks], ciks)
+    experts     = pd.DataFrame([FINALJSON[cik]['Experts']           for cik in ciks], ciks)
+    metadata    = pd.DataFrame([FINALJSON[cik]['Metadata']          for cik in ciks], ciks)
+    filings     = pd.DataFrame([FINALJSON[cik]['Filing']            for cik in ciks], ciks)
+    open_prices = pd.DataFrame([FINALJSON[cik]['Opening Prices']    for cik in ciks], ciks)
+
+    df = pd.DataFrame([[0]*len(float_columns)]*len(filings),
+                    filings.index,
+                    columns=float_columns)
 
 
     RW, MISSING, ABNORMAL_DURATION = [], [], set()
@@ -76,12 +89,14 @@ def df_filings():
     # cik, values = '1472595', filings.loc['1472595']
     print('Calculating dates and price updates...')
     for cik, values in filings.iterrows():
+        print("Parsing price data for {}:{}{}".format(cik, firmname(cik), ' '*20),
+                end='\r')
         if any(l[1] == 'RW' for l in values if l):
             RW.append(cik)
             continue
 
         values = [v for v in values if v]
-        values = [v for v in values if is_cash(v[-1][0]) and as_cash(v[-1][0]) > 3]
+        values = [v for v in values if is_cash(v[-1][0]) and as_cash(v[-1][0]) >= 4]
         if not values:
             MISSING.append(cik)
             print("{}: {} no filings above 3$".format(cik, firmname(cik)))
@@ -223,15 +238,18 @@ def order_df(df):
         'open_return', 'close_return',
         'SIC', 'FF49_industry', '2month_indust_rets', '2month_IPO_volume', '2month_pct_above_midpoint', '2month_initial_returns', 'BAA_yield_changes',
         'confidential_IPO', 'foreign', 'exchange',
-        'underwriter_rank_avg', 'underwriter_num_leads', 'underwriter_collective_rank', 'underwriter_tier',
+        'underwriter_rank_single', 'underwriter_rank_avg', 'underwriter_num_leads', 'underwriter_collective_rank', 'underwriter_tier',
         'share_overhang', 'shares_offered', 'total_dual_class_shares', 'log_proceeds',
         'market_cap', 'liab/assets', 'P/E', 'P/sales', 'EPS'
     ]
     missed_cols = sorted(set(df.keys()) - set(cols))
 
-    col_float = ['days_to_first_price_update', 'days_to_final_price_revision', 'days_from_priced_to_listing', 'size_of_first_price_update', 'size_of_final_price_revision', 'percent_first_price_update', 'percent_final_price_revision', 'number_of_price_updates', 'prange_change_first_price_update', 'Offer Price', 'Open', 'Close', 'High', 'Low', 'Volume', 'open_return', 'close_return', '2month_indust_rets', '2month_pct_above_midpoint', '2month_initial_returns', 'BAA_yield_changes', 'underwriter_rank_avg', 'underwriter_collective_rank', 'share_overhang', 'shares_offered', 'log_proceeds', 'market_cap', 'liab/assets', 'P/E', 'P/sales', 'EPS', ]
-    col_int = ['Year', 'confidential_IPO', 'underwriter_num_leads', '2month_IPO_volume', 'foreign', 'total_dual_class_shares']
-    col_obj = ['offer_in_filing_price_range', 'Coname', 'date_1st_pricing', 'date_last_pricing', 'date_424b', 'date_trading', 'date_s1_filing', 'Date', 'SIC', 'FF49_industry', 'underwriter_tier', 'exchange']
+    col_float = ['days_to_first_price_update', 'days_to_final_price_revision', 'days_from_priced_to_listing', 'size_of_first_price_update', 'size_of_final_price_revision', 'percent_first_price_update', 'percent_final_price_revision', 'number_of_price_updates', 'prange_change_first_price_update', 'Offer Price', 'Open', 'Close', 'High', 'Low', 'Volume', 'open_return', 'close_return', '2month_indust_rets', '2month_pct_above_midpoint', '2month_initial_returns', 'BAA_yield_changes', 'underwriter_rank_single', 'underwriter_rank_avg', 'underwriter_collective_rank', 'share_overhang', 'shares_offered', 'log_proceeds', 'market_cap', 'liab/assets', 'P/E', 'P/sales', 'EPS',
+    ]
+    col_int = ['Year', 'confidential_IPO', 'underwriter_num_leads', '2month_IPO_volume', 'foreign', 'total_dual_class_shares',
+    ]
+    col_obj = ['offer_in_filing_price_range', 'Coname', 'date_1st_pricing', 'date_last_pricing', 'date_424b', 'date_trading', 'date_s1_filing', 'Date', 'SIC', 'FF49_industry', 'underwriter_tier', 'exchange',
+    ]
 
     if not isinstance(df['SIC'].iloc[0], str):
         df["SIC"] = ['0'+str(i) if i<1000 else str(i) for i in df["SIC"]]
@@ -250,7 +268,7 @@ def underwriter_ranks(df):
     from functools import partial
     from arrow     import Arrow
     from fuzzywuzzy import process
-    uw_rank = pd.read_csv(IPO_DIR + "/SEC_index/uw_rank.csv", encoding="latin-1")
+    uw_rank = pd.read_csv(BASEDIR + "/data/uw_rank.csv", encoding="latin-1")
     uw_rank = uw_rank.dropna()
     uw_rank = uw_rank.set_index("Underwriter")
     na_uw = {'No Underwriter', 'Self-underwritten', ' -- '}
@@ -261,7 +279,7 @@ def underwriter_ranks(df):
     def lookup_underwriter(uw):
         "Matches UW with UR from carter manaster ranks by fuzzystring matching."
         is_same_alpha = partial(is_same_alphabet, uw[0].lower())
-        uw_with_same_alpha = set(filter(is_same_alpha, uw_rank.index))
+        uw_with_same_alpha = sorted(filter(is_same_alpha, uw_rank.index))
         matched_uw = process.extractOne(uw, uw_with_same_alpha)
         if matched_uw[1] < 80:
             print(uw, '->', matched_uw)
@@ -283,23 +301,28 @@ def underwriter_ranks(df):
     for cik, uw_list in experts['Lead Underwriter'].items():
         # Filter no underwriter
         if uw_list != uw_list:
+            df.loc[cik, 'underwriter_rank_single'] = -1
             df.loc[cik, 'underwriter_rank_avg'] = -1
             df.loc[cik, 'underwriter_num_leads'] = 0
             df.loc[cik, 'underwriter_collective_rank'] = -1
             continue
-        if any(uw in na_uw for uw in uw_list):
-            df.loc[cik, 'underwriter_rank_avg'] = 0
+        if all(uw in na_uw for uw in uw_list):
+            df.loc[cik, 'underwriter_rank_single'] = -1
+            df.loc[cik, 'underwriter_rank_avg'] = -1
             df.loc[cik, 'underwriter_num_leads'] = 0
-            df.loc[cik, 'underwriter_collective_rank'] = 0
+            df.loc[cik, 'underwriter_collective_rank'] = -1
             continue
 
         print("Getting underwriter rank for {}: {}".format(cik, firmname(cik)))
         uw_ranks = [get_uw_rank(uw,cik) for uw in uw_list]
         # #Average underwriter rank
-        CM_rank = round(sum(uw_ranks)/len(uw_list), 1)
-        df.loc[cik, 'underwriter_rank_avg'] = CM_rank
+        CM_rank_single  = max(uw_ranks)
+        CM_rank_average = round(sum(uw_ranks)/len(uw_list), 1)
+        df.loc[cik, 'underwriter_rank_single'] = CM_rank_single
+        df.loc[cik, 'underwriter_rank_avg'] = CM_rank_average
         df.loc[cik, 'underwriter_num_leads'] = len(uw_list)
         df.loc[cik, 'underwriter_collective_rank'] = round(sum(uw_ranks), 1)
+
     return df
 
 
@@ -375,6 +398,7 @@ def ipo_cycle_variables(df, lag=2, date_key='date_1st_pricing', weighting='value
         #     FF49.columns = FFkeys
         #     FF49.set_index('Date', inplace=True)
 
+
         FF49 = web.DataReader("49_Industry_Portfolios", "famafrench")[4]
         FFkeys = [re.sub(r'[0-9]{1,2}\s[b]', '', s).replace("'", '') for s in FF49.keys()]
         FF49.columns = FFkeys
@@ -383,6 +407,7 @@ def ipo_cycle_variables(df, lag=2, date_key='date_1st_pricing', weighting='value
             FFindustries = df['FF49_industry']
         except:
             raise(KeyError("FF49 industry key missing, run match_sic_indust_FF first."))
+
 
         print("Matching industry returns on 'FF49_industry'...")
         df_returns = []
@@ -408,9 +433,12 @@ def ipo_cycle_variables(df, lag=2, date_key='date_1st_pricing', weighting='value
 
         BAA_yield_changes = []
         for d in filing_dates:
-            date_range = arrow.Arrow.range('month', d.replace(months=(-lag+1)), d)
-            BAA_lagged = BAA[BAA.index.isin(date_range)]
-            BAA_yield_changes += [BAA_lagged['BAA'][-1] - BAA_lagged['BAA'][0]]
+            if d:
+                date_range = arrow.Arrow.range('month', d.replace(months=(-lag+1)), d)
+                BAA_lagged = BAA[BAA.index.isin(date_range)]
+                BAA_yield_changes += [BAA_lagged['BAA'][-1] - BAA_lagged['BAA'][0]]
+            else:
+
         return BAA_yield_changes
 
     def IPO_market_trends(filing_dates, lag):
@@ -444,7 +472,10 @@ def ipo_cycle_variables(df, lag=2, date_key='date_1st_pricing', weighting='value
         return net_volume, avg_initial_return, percent_above_midpoint
 
 
-    filing_dates = [arrow.get(d, 'YYYY-MM') for d in df[date_key]]
+    if isinstance(df[date_key].iloc[0], str):
+        filing_dates = [arrow.get(d, 'YYYY-MM') for d in df[date_key]]
+    else:
+        filing_dates = [arrow.get(d.strftime('%Y-%m'), 'YYYY-MM') if d==d else None for d in df[date_key]]
     try:
         cycle_keys = [x for x in df.keys() if x[0].isdigit()]
         print("Clearing keys: {}".format(cycle_keys))
@@ -452,11 +483,11 @@ def ipo_cycle_variables(df, lag=2, date_key='date_1st_pricing', weighting='value
     except ValueError:
         pass
 
+    df['BAA_yield_changes'] = BAA_yield_spread(filing_dates)
     df['{n}month_indust_rets'.format(n=lag)] = FF_industry_returns(filing_dates, lag)
     df['{n}month_IPO_volume'.format(n=lag)], \
     df['{n}month_initial_returns'.format(n=lag)], \
     df['{n}month_pct_above_midpoint'.format(n=lag)] = IPO_market_trends(filing_dates, lag)
-    df['BAA_yield_changes'] = BAA_yield_spread(filing_dates)
 
     return df
 
@@ -466,7 +497,7 @@ def dual_class_shares(df):
     def as_num(string):
         string = re.sub(r'(,|\s--\s)', '', string)
         if string:
-            return int(string)
+            return float(string)
 
     dual_class_shares = pd.read_excel("data/dualclassIPOs19802014.xls")
     dual_class_shares.set_index("CUSIP", inplace=True)
@@ -490,14 +521,20 @@ def share_overhang(df):
         print("Share overhang for: {}".format(cik), end=' '*20+'\r')
         shares_outstanding = df.loc[cik, 'total_dual_class_shares']
         shares_offered = FINALJSON[cik]['Company Overview']['Shares Offered']
-        if shares_outstanding==' -- ' or shares_offered==' -- ':
+
+        if shares_outstanding == ' -- ' or shares_offered == ' -- ':
             df.loc[cik, 'share_overhang'] = None
-        else:
+
+        elif shares_outstanding and shares_offered:
             if isinstance(shares_outstanding, str):
                 shares_outstanding = as_int(shares_outstanding)
             if isinstance(shares_offered, str):
                 shares_offered = as_int(shares_offered)
             df.loc[cik, 'share_overhang'] =  shares_outstanding / shares_offered
+
+        else:
+            df.loc[cik, 'share_overhang'] = None
+
     return df
 
 
@@ -522,15 +559,26 @@ def confidential_IPO(df):
 def financials(df):
     "Populate df with financials metrics: liabilities/assets, EPS, log_proceeds"
 
+
+    def midpoint(iterable):
+        assert len(list(iterable)) <= 2
+        return sum(list(iterable)) / len(iterable)
+
+    def as_int(string):
+        return int(string.replace(',',''))
+
     for cik in df.index:
         print("Getting financial ratios for {}: {}".format(cik, firmname(cik)), end=" "*20+'\r')
         FJ = FINALJSON[cik]
+
+        priceranges = [f[-1] for f in filings.loc[cik] if f]
+        midpoint_initial_filing_price = [midpoint(list(map(as_cash, pr))) for pr in priceranges if as_cash(pr[0])][-1]
 
         net_income = as_cash(FJ['Financials']['Net Income'])
         revenue = as_cash(FJ['Financials']['Revenue'])
         liabil = as_cash(FJ['Financials']['Total Liabilities'])
         assets = as_cash(FJ['Financials']['Total Assets'])
-        proceeds = as_cash(FJ['Company Overview']['Offer Amount'])
+        proceeds = midpoint_initial_filing_price * as_int(FJ['Company Overview']['Shares Offered'])
         share_price = as_cash(FJ['Company Overview']['Share Price'])
         num_shares = df.loc[cik, 'total_dual_class_shares']
 
@@ -559,6 +607,7 @@ def from_FINALJSON_to_df():
     df.set_index('cik', inplace=True)
     #########################
     df.sort_index(inplace=True)
+
     df = df.join(open_prices.sort_index())
     cols = ['Open', 'Close', 'High', 'Low', 'Volume']
     df[cols] = df[cols].astype(float)
@@ -570,6 +619,7 @@ def from_FINALJSON_to_df():
     ########
     df = underwriter_ranks(df)
     df = match_sic_indust_FF(df)
+    df = dual_class_shares(df)
     df = share_overhang(df)
     df = confidential_IPO(df)
     df = ipo_cycle_variables(df)
@@ -579,16 +629,10 @@ def from_FINALJSON_to_df():
 
 
 
-# GVKEY,IID,Date,Ticker,CUSIP,Coname,Volume,Close,High,Low,Open,NAICS,SIC,CIK
-
-
-
-
-
 
 
 ## IoI
-def cumulative_iot(df, category):
+def cumulative_iot(ciks, category):
     """Calculates median interest over time (IoT) 60 days before roadshow date,
     CASI (cumulative abnormal search interest) and CSI (cumulative search interest)
 
@@ -612,7 +656,8 @@ def cumulative_iot(df, category):
                 return index
         return len(iot_triple) - 1
 
-    for cik in df.index:
+    # ciks = ['1439404', '1418091', '1271024', '1500435', '1318605', '1594109', '1326801', '1564902']
+    for cik in ciks:
         print('\rCrunching interest-over-time <{}>: {} {}'.format(
                 category, cik, firmname(cik)), ' '*40, end='\r')
 
@@ -642,8 +687,8 @@ def cumulative_iot(df, category):
             # median IoT in previous 60 days before s-1 filing
             median_iot = median(iot[M-70:M-14])
             # -10 weeks to -2 weeks before S-1 filing to calculate median IoT
-            # Cumulative search interest after roadshow begins:
-            CSI = sum(iot[S-30:E])
+            # Cumulative search interest 14 days before 1st pricing to 1st update:
+            CSI = sum(iot[E-30:E])
             # Cumulative abnormal search interest:
             CASI = sum(i - median_iot for i in iot[E-30:E])
         except (ValueError, IndexError) as e:
@@ -652,8 +697,6 @@ def cumulative_iot(df, category):
             CSI  = 0
             CASI = 0
 
-        if median_iot != median_iot:
-            median_iot, CSI, CASI = 0, 0, 0
 
         if len(iot_data.columns)==4:
             if iot_data.columns[1] not in iot_data.columns[3]:
@@ -718,6 +761,7 @@ def weighted_iot(df, weighting='value_weighted'):
 def plot_iot(cik, category=''):
     "plots Google Trends Interest-over-time (IoT)"
 
+    import matplotlib.dates as mdates
 
     def gtrends_file(cik, category):
         gtrends_dir = os.path.join(os.path.expanduser('~'), 'Dropbox', 'gtrends-beta', 'cik-ipo', category)
@@ -800,9 +844,9 @@ def plot_iot(cik, category=''):
 
 
 def process_IOT_variables():
-    entities1 = cumulative_iot(df, 'all')
-    entities2 = cumulative_iot(df, 'finance')
-    entities3 = cumulative_iot(df, 'business-industrial')
+    entities1 = cumulative_iot(df.index, 'all')
+    entities2 = cumulative_iot(df.index, 'finance')
+    entities3 = cumulative_iot(df.index, 'business-industrial')
     # entities4 = cumulative_iot(df, 'investing')
 
     df = weighted_iot(df, weighting='equal')
@@ -810,7 +854,17 @@ def process_IOT_variables():
     df['ln_CASI_all'] = np.log(df['IoT_CASI_all'] + 1)
     df['ln_CSI_all'] = np.log(df['IoT_CSI_all'] + 1)
 
-    df.to_csv("df.csv")
+    df['ln_CASI_finance'] = np.log(df['IoT_CASI_finance'] + 1)
+    df['ln_CSI_finance'] = np.log(df['IoT_CSI_finance'] + 1)
+
+    # IoT measures:
+    # 1) t-30 end-date to end-date (either 1st price update or listing day, whiever is first)
+    # 2) IoT between t-14 days before 1st pricing and final revision/listing day
+
+    # 1) => same number of days for all IPO
+    # 2) => delayed IPOs get higher scores
+
+    df.to_csv("df.csv", dtype={"cik": object})
 
 
 
@@ -824,6 +878,8 @@ def process_IOT_variables():
 if __name__=='__main__':
 
     FINALJSON = json.loads(open('final_json.txt').read())
+
+    FINALJSON = FULLJSON
     ciks = sorted(FINALJSON.keys())
 
     company     = pd.DataFrame([FINALJSON[cik]['Company Overview']  for cik in ciks], ciks)
@@ -832,6 +888,7 @@ if __name__=='__main__':
     metadata    = pd.DataFrame([FINALJSON[cik]['Metadata']          for cik in ciks], ciks)
     filings     = pd.DataFrame([FINALJSON[cik]['Filing']            for cik in ciks], ciks)
     open_prices = pd.DataFrame([FINALJSON[cik]['Opening Prices']    for cik in ciks], ciks)
+
 
     df = pd.read_csv('df.csv', dtype={'cik':object})
     df.set_index('cik', inplace=True)
@@ -847,7 +904,8 @@ if __name__=='__main__':
     cik = '1564902' # SeaWorld      # 9.54
     cikfb = '1326801' # Facebook
 
-    ciks = ['1439404', '1418091', '1271024', '1500435', '1318605', '1594109', '1326801', '1564902']
+    ciks1 = ['1439404', '1418091', '1271024', '1500435', '1318605', '1594109', '1326801', '1564902']
+    iotkeys = ['gtrends_name', 'IoT_entity_type', 'IoT_CASI_all', 'IoT_CSI_all', 'IoT_median_all', 'IoT_CASI_finance', 'IoT_CSI_finance', 'IoT_median_finance']
     searchterms = {k:v for k,v in df[(df.IoT_entity_type=='Search term')]['gtrends_name'].items()}
 
 
