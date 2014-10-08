@@ -38,15 +38,17 @@ def parse_section(html):
                    "efx_registration_fee",
                    "efx_financial_data"]
 
+
     for subheader in sub_headers:
         if subheader:
             elem_types = "[self::p or self::div]"
+            efx_path = "//body/efx_form/descendant::{HEAD}/*{ELEM}"
         else:
             Nth_elem = int(len(html.xpath("//body/efx_form//*")) / 10)
             # scan the first 1/10 of all general efx_from elems
             elem_types = "[position() < {} and (self::p or self::div)]".format(Nth_elem)
+            efx_path = "//body/efx_form/{HEAD}/*{ELEM}"
 
-        efx_path = "//body/efx_form/{HEAD}/*{ELEM}"
         efx_elem = html.xpath(efx_path.format(HEAD=subheader, ELEM=elem_types))
         if efx_elem:
             yield from (" ".join([fix_bad_str(s) for s in elem.xpath(".//text()")]) for elem in efx_elem)
@@ -58,27 +60,26 @@ def parse_table(html):
     offer_price = re.compile(r'[Oo]ffering\s*[Pp]rice')
     common_stock = re.compile(r'[Cc]ommon\s*[Ss]tock')
     initial_price = re.compile(r'Initial price to public')
-    per_share = re.compile(r'(^[Pp]er [Ss]hare|^[Pp]er ADS|^[Pp]er [Cc]ommon [Uu]nit)$')
+    per_share = re.compile(r'(^[Pp]er [Ss]hare|^[Pp]er ADS|^[Pp]er [Cc]ommon [Uu]nit|^[Pp]er [Uu]nit|^[Pp]er [Cc]ommon [Ss]hare|^Per [Oo]rdinary [Ss]hare)')
     earnings = re.compile(r'[Ee]arnings')
+    balance_sheet_headers = ['cash', 'deferred', 'tax', 'assets', 'depreciation', 'net income', 'liabilities']
+
 
     # Look at first 5 efx_unidentified_tables with: <div>, <table>, <center> elems
-    efx_unidentified_table = '//body/efx_form//efx_unidentified_table[{N}]/' + \
-                             '*[self::div or self::table or self::center]' + \
-                             '//tr/descendant::*/text()'
+    efx_unidentified_table = '//body/efx_form/descendant::efx_unidentified_table[{N}]' + \
+                             '/descendant::tr/descendant::*/text()'
     # poor html formatting: tables outside of efx_unidentified_table
     efx_form_table = "//body/efx_form/table[{N}]//descendant::*/text()"
     efx_distribution_plan = '//efx_form/descendant::efx_distribution_plan/descendant::table/descendant::*/text()'
 
-    table_xpaths = [efx_unidentified_table.format(N=N) for N in range(1,6)] + \
-                   [efx_form_table.format(N=N) for N in range(1,4)]
+    table_xpaths = [efx_unidentified_table.format(N=N) for N in range(8)] + \
+                   [efx_form_table.format(N=N) for N in range(5)]
 
 
-    balance_sheet_headers = ['cash', 'deferred', 'tax', 'assets', 'depreciation', 'net income', 'liabilities']
+    for N, xpath_table in enumerate(table_xpaths):
 
-
-    for xpath_table in table_xpaths:
-
-        efx_table_text = html.xpath(xpath_table)
+        # efx_table_text = html.xpath(xpath_table)
+        efx_table_text = html.xpath(table_xpaths[N])
         efx_elems_text = [fix_bad_str(s) for s in efx_table_text if fix_bad_str(s)]
 
         if any(any(x.lower().startswith(b) for x in efx_elems_text) for b in balance_sheet_headers):
@@ -90,6 +91,7 @@ def parse_table(html):
             efx_elems_text = fix_dollars(efx_elems_text)
 
         next_elem_is_IPO_price = False
+        counter = 0
         for s in efx_elems_text:
             if not s:
                 continue
@@ -97,11 +99,26 @@ def parse_table(html):
                 if not earnings.search(s):
                     next_elem_is_IPO_price = True
                     continue
-            if next_elem_is_IPO_price and s.startswith('$'):
-                print(s)
-                yield '<Table {}>: Initial public offering price per share is '.format(N) + s
-                break
 
+            if counter > 4:
+                if DEBUG: print('break IPO price')
+                next_elem_is_IPO_price = False
+                counter = 0
+                continue
+
+            if next_elem_is_IPO_price:
+                counter += 1
+
+            if re.search(r"\$[\d,]*,\d{3}", s):
+                continue
+
+            if re.search(r"\$[\d]{3}[\.]\d\d", s):
+                continue
+
+            elif next_elem_is_IPO_price and (re.search(r"\$\d{0,2}[\.]?\d{0,2}", s) or s.strip()=='$'):
+                if DEBUG: print('<Table {}>: IPO price per share is {}'.format(N, s))
+                yield '<Table {}>: Initial public offering price per share is {} per share'.format(N, s)
+                break
 
 
 
@@ -112,31 +129,36 @@ def parse_sentence(sentence):
     ex_option = re.compile(r"[Ee]xercise\s*[Pp]rice")
     convertible = re.compile(r"[Cc]onvertible note[s]?")
     preferred = re.compile(r"[Cc]onvertible preferred stock")
-    private = re.compile(r"([Pp]rivate placement[s]?|[Ss]eries [A-Z])")
+    private = re.compile(r"([Pp]rivate placement[s]?)")
     warrant = re.compile(r"([Ww]arrant|[Ee]xercisable)")
     option_filters = [ex_option, convertible, preferred, private, warrant]
 
-
     # Check if paragraph is IPO relevant
-    is_an_ipo = re.compile(r"[Ii]nitial\s+[Pp]ublic\s+[Oo]ffering")
-    offer_common = re.compile(r"[Oo]ffering shares\s*(of)?\s*common\s*stock")
+    is_an_ipo = re.compile(r"([Ii]nitial\s+[Pp]ublic\s+[Oo]ffering|public offering price)")
+    offer_common = re.compile(r"[Oo]ffer(ing)? shares\s*(of)?\s*common\s*stock")
     common_stock = re.compile(r"common stock in the offering")
     no_public = re.compile(r"(no\s*(established)?\s*public\s*(trading)?\s*market" +
                            r"|no\s*current\s*market\s*for\s*our\s*([Cc]ommon)?\s*[Ss]tock"
                            r"|not been a public market for our [Cc]ommon\s*[Ss]tock)")
     ipo_filters = [is_an_ipo, offer_common, common_stock, no_public]
 
-
     # price extraction rules
-    price_rng = re.compile(r"(\$\s*\d*[\.]?\d{0,2}\s*[Aa]nd\s*(U[\.]?S)?\s*\$\s*\d*[\.]?\d{0,2}\s[Mm][i][l]" + \
-                           r"|\$\s*\d*[\.]?\d{0,2}\s*[Aa]nd\s*(U[\.]?S)?\s*\$\s*\d*[\.]?\d{0,2})")
-    price_rng2 = re.compile(r"price is between\s*and\s*per share")
-    prices_strict = re.compile(r"(offering price (of|is) \$\s*\d+[\.]\d+ per (share|ADS)" +
-                               r"|offered\s*(for sale)?\s*at a price of \$\s*\d+[\.]\d+ per share" +
-                               r"|offering price per (share|ADS) is \$\s*\d+[\.]\d+" +
-                               r"|offering price (of the|per) ADS[s]? is (U[\.]?S)?\$\s*\d+[\.]\d+" +
-                               r"|offering price to be (U[\.]?S)?\$\s*\d+[\.]\d+ per share)")
-    price_types = re.compile(r"(\$\s*\d*[\.]?\d{0,2}....|\$\s*\d*[\.]?\d{0,2})")
+    price_rng = re.compile(
+        r"(\$\s*\d*[\.]?\d{0,2}\s*[Aa]nd\s*(U[\.]?S)?\s*\$\s*\d*[\.]?\d{0,2}\s[Mm][i][l]" + \
+        r"|\$\s*\d*[\.]?\d{0,2}\s*[Aa]nd\s*(U[\.]?S)?\s*\$\s*\d*[\.]?\d{0,2}" + \
+        r"|\$\s*\d*[\.]?\d{0,2}\s*([-]|[Tt]o)\s*(U[\.]?S)?\s*\$\s*\d*[\.]?\d{0,2})")
+
+    price_rng2 = re.compile(r"(price is between\s*and\s*per share" + \
+                            r"|be between\s*[\$]?\s*and\s*[\$]?\s*per share" +\
+                            r"|be between\s*\$\s*\[\s*[·]?\s*\]\s*and\s*\$\s*\[\s*[·]?\s*\]\s*)")
+
+    prices_strict = re.compile(r"(offering price (of|is) \$\s*\d+[\.]\d* per (share|ADS)" +
+                               r"|offered\s*(for sale)?\s*at a price of \$\s*\d+[\.]\d* per share" +
+                               r"|offering price per (share|ADS) is \$\s*\d+[\.]\d*" +
+                               r"|offering price (of the|per) ADS[s]? is (U[\.]?S)?\$\s*\d+[\.]\d*" +
+                               r"|offer(ing)? price ([\w]+\s)*\$\s*\d*[\.]?\d{0,2}\s*per share" +
+                               r"|offering price to be (U[\.]?S)?\$\s*\d+[\.]\d* per share)")
+    price_types = re.compile(r"(\$\s*\d*[\.]?\d{0,2}\s[MmBb]il|\$\s*\d*[\.]?\d{0,2})")
     # price_rng and price_types catches $19.00 mil
     oprice = re.compile(r"\$\s*\d*[\.]?\d{0,2}")
 
@@ -165,18 +187,20 @@ def parse_sentence(sentence):
 
                 return offer_prices
 
+        if price_rng2.search(s):
+            if DEBUG: print(s)
+            return ['$', '$']
+
         if prices_strict.search(s):
-            if DEBUG: print('\n', s)
+            if DEBUG: print('\nprices_strict =>', s)
             offer_prices = price_types.findall(prices_strict.search(s).group())
             if any('mil' in x for x in offer_prices):
                 return None
             else:
-                return [oprice.search(x).group() for x in offer_prices]
+                return [oprice.search(x).group().replace(' ','') for x in offer_prices]
                 # finds phrases of the form "offering price of $xx.xx per share"
 
-        if price_rng2.search(s):
-            if DEBUG: print(s)
-            return ['$', '$']
+
 
 
 
@@ -251,6 +275,8 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
 
     ciks = sorted(list(set(FINALJSON.keys())))
 
+
+
     for i, cik in enumerate(ciks):
         if cik in done_ciks:
             continue
@@ -300,6 +326,8 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
 
 
 def print_pricerange(s):
+    "arg s: either firmname or cik. Returns price-ranges"
+
     if not s.isdigit():
         cik = [k for k in FINALJSON if firmname(k).lower().startswith(s.lower())][0]
     else:
