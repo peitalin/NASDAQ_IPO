@@ -38,6 +38,10 @@ def parse_section(html):
                    "efx_registration_fee",
                    "efx_financial_data"]
 
+    # supplementary =  "//body/efx_form/descendant::efx_part_ii/descendant::b/text()"
+    # efx_part_ii = [x.strip().lower() for x in html.xpath(supplementary)]
+    # if 'information not required in prospectus' in efx_part_ii:
+    #     return 'information not required in prospectus'
 
     for subheader in sub_headers:
         if subheader:
@@ -70,9 +74,11 @@ def parse_table(html):
                              '/descendant::tr/descendant::*/text()'
     # poor html formatting: tables outside of efx_unidentified_table
     efx_form_table = "//body/efx_form/table[{N}]//descendant::*/text()"
+    efx_registration = "//body/descendant::efx_registration_fee/descendant::efx_unidentified_table/descendant::tr/descendant::*/text()"
     efx_distribution_plan = '//efx_form/descendant::efx_distribution_plan/descendant::table/descendant::*/text()'
 
     table_xpaths = [efx_unidentified_table.format(N=N) for N in range(8)] + \
+                   [efx_registration] + \
                    [efx_form_table.format(N=N) for N in range(5)]
 
 
@@ -95,24 +101,20 @@ def parse_table(html):
         for s in efx_elems_text:
             if not s:
                 continue
+            if counter > 5:
+                if DEBUG: print('break IPO price. {}'.format(s))
+                next_elem_is_IPO_price = False
+                counter = 0
+
             if offer_price.search(s) or common_stock.search(s) or per_share.search(s):
                 if not earnings.search(s):
                     next_elem_is_IPO_price = True
                     continue
 
-            if counter > 4:
-                if DEBUG: print('break IPO price')
-                next_elem_is_IPO_price = False
-                counter = 0
-                continue
-
             if next_elem_is_IPO_price:
                 counter += 1
 
-            if re.search(r"\$[\d,]*,\d{3}", s):
-                continue
-
-            if re.search(r"\$[\d]{3}[\.]\d\d", s):
+            if re.search(r"\$[\d]{3}[\.]?\d*", s) or re.search(r"\$[\d,]*,\d{3}", s) or 'par value' in s:
                 continue
 
             elif next_elem_is_IPO_price and (re.search(r"\$\d{0,2}[\.]?\d{0,2}", s) or s.strip()=='$'):
@@ -125,22 +127,28 @@ def parse_table(html):
 def parse_sentence(sentence):
     "Parses sentence/paragraph for IPO price ranges and returns a price range"
 
+    if sentence == 'information not required in prospectus':
+        return ['NAN']
+
     # Filter options, preferreds, convertibles
     ex_option = re.compile(r"[Ee]xercise\s*[Pp]rice")
     convertible = re.compile(r"[Cc]onvertible note[s]?")
     preferred = re.compile(r"[Cc]onvertible preferred stock")
     private = re.compile(r"([Pp]rivate placement[s]?)")
     warrant = re.compile(r"([Ww]arrant|[Ee]xercisable)")
-    option_filters = [ex_option, convertible, preferred, private, warrant]
+    dividends = re.compile(r"[Pp]ermitted [Dd]ividend[s]?")
+    option_filters = [ex_option, convertible, preferred, private, warrant, dividends]
 
     # Check if paragraph is IPO relevant
     is_an_ipo = re.compile(r"([Ii]nitial\s+[Pp]ublic\s+[Oo]ffering|public offering price)")
+    applied_listing = re.compile(r"[Ww]e ([\w]+\s)*list ([\w]+\s)*shares ([\w]+\s)*[Ee]xchange")
+    anticipate = re.compile(r"we anticipate that ([\w]+\s)*shareholders ([\w]+\s)*sell their shares")
     offer_common = re.compile(r"[Oo]ffer(ing)? shares\s*(of)?\s*common\s*stock")
     common_stock = re.compile(r"common stock in the offering")
     no_public = re.compile(r"(no\s*(established)?\s*public\s*(trading)?\s*market" +
                            r"|no\s*current\s*market\s*for\s*our\s*([Cc]ommon)?\s*[Ss]tock"
                            r"|not been a public market for our [Cc]ommon\s*[Ss]tock)")
-    ipo_filters = [is_an_ipo, offer_common, common_stock, no_public]
+    ipo_filters = [is_an_ipo, applied_listing, anticipate, offer_common, common_stock, no_public]
 
     # price extraction rules
     price_rng = re.compile(
@@ -148,9 +156,10 @@ def parse_sentence(sentence):
         r"|\$\s*\d*[\.]?\d{0,2}\s*[Aa]nd\s*(U[\.]?S)?\s*\$\s*\d*[\.]?\d{0,2}" + \
         r"|\$\s*\d*[\.]?\d{0,2}\s*([-]|[Tt]o)\s*(U[\.]?S)?\s*\$\s*\d*[\.]?\d{0,2})")
 
-    price_rng2 = re.compile(r"(price is between\s*and\s*per share" + \
-                            r"|be between\s*[\$]?\s*and\s*[\$]?\s*per share" +\
-                            r"|be between\s*\$\s*\[\s*[·]?\s*\]\s*and\s*\$\s*\[\s*[·]?\s*\]\s*)")
+    price_rng2 = re.compile(r"(price is between\s*and\s*per share" +
+                            r"|be between\s*[\$]?\s*and\s*[\$]?\s*per share" +
+                            r"|offering price will be \$\[\s*.*\s*\] per share" +
+                            r"|be between\s*\$\s*\[\s*.*\s*\]\s*and\s*\$\s*\[\s*.*\s*\]\s*)")
 
     prices_strict = re.compile(r"(offering price (of|is) \$\s*\d+[\.]\d* per (share|ADS)" +
                                r"|offered\s*(for sale)?\s*at a price of \$\s*\d+[\.]\d* per share" +
@@ -322,6 +331,8 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
         done_ciks.append(cik)
 
 
+# done_ciks2 = ['0018169', '0700923', '0767884', '0867773', '0883981', '0885306', '0895126', '0902622', '0937556', '1004724', '1004945', '1008848', '1024305', '1029299', '1044378', '1051514', '1069899', '1071411', '1071625', '1087294', '1092699', '1093557', '1097503', '1103025', '1104349', '1105360', '1105533', '1109189', '1114529', '1117733', '1118417', '1120105', '1121439', '1121702', '1122897', '1124105', '1125001', '1125294', '1125920', '1126234', '1126741', '1130598', '1130866', '1131096', '1131324', '1131554', '1132484', '1133260', '1138400', '1138639', '1138723', '1138776', '1145197', '1145986', '1157408', '1157780', '1158223', '1159167', '1160958', '1162192', '1162194', '1162245', '1163932', '1167178', '1168195', '1168652', '1169561', '1169652', '1171218', '1173752', '1175505', '1175609', '1175685', '1176948', '1177609', '1178104', '1178336', '1178879', '1180079', '1182325', '1200375', '1201663', '1205431', '1207074', '1212235', '1216199', '1208208', '1227025', '1227930', '1230276', '1230355', '1232524', '1235468', '1237746', '1239819', '1244937', '1246263', '1253689', '1264587', '1265888', '1267602', '1270073', '1271024', '1272830', '1274494', '1274563', '1276187', '1277856', '1280263', '1280776', '1285701', '1287151', '1287213', '1288403', '1289419', '1290096', '1292426', '1292556', '1292653', '1293282', '1293971', '1295557', '1295947', '1245104', '1296391', '1297184', '1297627', '1297989', '1299966', '1301501', '1302028', '1302573', '1302707', '1303313', '1304421', '1305294', '1305323', '1306527', '1307954', '1308858', '1309108', '1310094', '1310663', '1311230', '1311370', '1311486', '1311596', '1312928', '1314592', '1314655', '1315054', '1316656', '1313024', '1316835', '1316925', '1318605', '1318641', '1318885', '1319197', '1319229', '1319327', '1319439', '1319947', '1320092', '1320414', '1320854', '1322439', '1322505', '1322587', '1323630', '1323648', '1323715', '1321834', '1323854', '1323974', '1324245', '1324272', '1324518', '1324410', '1324592', '1324915', '1324948', '1325618', '1325879', '1325955', '1326190', '1326200', '1326428', '1326801', '1327098', '1327471', '1328650', '1329365', '1329919', '1330849', '1331284', '1329799', '1331520', '1332341', '1332602', '1332639', '1333493', '1333513', '1334036', '1334478', '1334814', '1334978', '1335106', '1336691', '1337117', '1337675', '1338065', '1338401', '1338613', '1338949', '1339553', '1339605', '1340744', '1340752', '1341235', '1341769', '1342287', '1342960', '1344376', '1344674', '1347815', '1348259', '1348324', '1349108', '1349436', '1350102', '1350381', '1350593', '1351509', '1352341', '1355007', '1355795', '1356090', '1356949', '1345105', '1357204', '1357326', '1357371', '1357525', '1358071', '1358164', '1358656', '1360530', '1360537', '1360683', '1360886', '1361113', '1361709', '1361983', '1362004', '1362614', '1362988', '1364099', '1364541', '1365038', '1365555', '1365916', '1366246', '1366340', '1366649', '1367064', '1367705', '1367920', '1368265', '1368308', '1368519', '1609804', '1368582', '1368900', '1369568', '1369786', '1369817', '1370314', '1370880', '1372664', '1373670', '1373715', '1373980', '1374690', '1375083', '1375151', '1375200', '1375557', '1376139', '1378140', '1375877', '1378718', '1378789', '1379009', '1379246', '1379378', '1379661', '1380393', '1381197', '1381325', '1382696', '1382911', '1383650', '1383701', '1384072', '1384101', '1385280', '1385292', '1385544', '1385613', '1386198', '1386278', '1387467', '1388430', '1388775', '1389002', '1389030', '1389170', '1389545', '1391390', '1391672', '1392091', '1393052', '1393726', '1393744', '1393818', '1394074', '1394159', '1394954', '1395593', '1395942', '1395943', '1396546', '1396838', '1397821', '1398659', '1399249', '1399529', '1400400', '1400810', '1401112', '1401257', '1401678', '1401680', '1402057', '1402436', '1402606', '1403161', '1403385', '1403431', '1402829', '1403794', '1403795', '1411861', '1413159', '1413447', '1414475', '1415301', '1415336', '1415624', '1416792', '1419178', '1419852', '1420302', '1420800', '1421525', '1419945', '1421526', '1422892', '1423542', '1423902', '1424929'
+
 
 
 
@@ -340,7 +351,7 @@ def print_pricerange(s):
     for v in filings:
         filing_ashx = v[-2]
         price_range = v[-1][0]
-        if price_range == 'NA':
+        if price_range in ['NA', 'NAN']:
             NA_filepath = os.path.join(BASEDIR, 'filings', cik, filing_ashx)
             filesize = os.path.getsize(NA_filepath)
             print("{}\t{}\t\t{}\t{}\t<= {:,} kbs".format(v[2], v[1], v[3], v[-1], round(filesize/1000)))
