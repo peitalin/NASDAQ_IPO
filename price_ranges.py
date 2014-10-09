@@ -88,9 +88,12 @@ def parse_table(html):
         efx_table_text = html.xpath(table_xpaths[N])
         efx_elems_text = [fix_bad_str(s) for s in efx_table_text if fix_bad_str(s)]
 
-        if any(any(x.lower().startswith(b) for x in efx_elems_text) for b in balance_sheet_headers):
-            # skip balance sheets
-            continue
+
+        for i,x in enumerate(efx_elems_text):
+            if any(x.lower().startswith(b) for b in balance_sheet_headers):
+                # truncate list when encountering balance sheet items
+                efx_elems_text = efx_elems_text[:i]
+                break
 
         if not any(f==s=='$' for f,s in zip(efx_elems_text, efx_elems_text[1:])):
             # checks tables for blank $, otherwise appends $ with next number.
@@ -102,7 +105,7 @@ def parse_table(html):
             if not s:
                 continue
             if counter > 5:
-                if DEBUG: print('break IPO price. {}'.format(s))
+                if DEBUG: print('break next_elem_is_IPO_price. {}'.format(s))
                 next_elem_is_IPO_price = False
                 counter = 0
 
@@ -117,98 +120,15 @@ def parse_table(html):
             if re.search(r"\$[\d]{3}[\.]?\d*", s) or re.search(r"\$[\d,]*,\d{3}", s) or 'par value' in s:
                 continue
 
-            elif next_elem_is_IPO_price and (re.search(r"\$\d{0,2}[\.]?\d{0,2}", s) or s.strip()=='$'):
-                if DEBUG: print('<Table {}>: IPO price per share is {}'.format(N, s))
-                yield '<Table {}>: Initial public offering price per share is {} per share'.format(N, s)
-                break
-
-
-
-def parse_sentence(sentence):
-    "Parses sentence/paragraph for IPO price ranges and returns a price range"
-
-    if sentence == 'information not required in prospectus':
-        return ['NAN']
-
-    # Filter options, preferreds, convertibles
-    ex_option = re.compile(r"[Ee]xercise\s*[Pp]rice")
-    convertible = re.compile(r"[Cc]onvertible note[s]?")
-    preferred = re.compile(r"[Cc]onvertible preferred stock")
-    private = re.compile(r"([Pp]rivate placement[s]?)")
-    warrant = re.compile(r"([Ww]arrant|[Ee]xercisable)")
-    dividends = re.compile(r"[Pp]ermitted [Dd]ividend[s]?")
-    option_filters = [ex_option, convertible, preferred, private, warrant, dividends]
-
-    # Check if paragraph is IPO relevant
-    is_an_ipo = re.compile(r"([Ii]nitial\s+[Pp]ublic\s+[Oo]ffering|public offering price)")
-    applied_listing = re.compile(r"[Ww]e ([\w]+\s)*list ([\w]+\s)*shares ([\w]+\s)*[Ee]xchange")
-    anticipate = re.compile(r"we anticipate that ([\w]+\s)*shareholders ([\w]+\s)*sell their shares")
-    offer_common = re.compile(r"[Oo]ffer(ing)? shares\s*(of)?\s*common\s*stock")
-    common_stock = re.compile(r"common stock in the offering")
-    no_public = re.compile(r"(no\s*(established)?\s*public\s*(trading)?\s*market" +
-                           r"|no\s*current\s*market\s*for\s*our\s*([Cc]ommon)?\s*[Ss]tock"
-                           r"|not been a public market for our [Cc]ommon\s*[Ss]tock)")
-    ipo_filters = [is_an_ipo, applied_listing, anticipate, offer_common, common_stock, no_public]
-
-    # price extraction rules
-    price_rng = re.compile(
-        r"(\$\s*\d*[\.]?\d{0,2}\s*[Aa]nd\s*(U[\.]?S)?\s*\$\s*\d*[\.]?\d{0,2}\s[Mm][i][l]" + \
-        r"|\$\s*\d*[\.]?\d{0,2}\s*[Aa]nd\s*(U[\.]?S)?\s*\$\s*\d*[\.]?\d{0,2}" + \
-        r"|\$\s*\d*[\.]?\d{0,2}\s*([-]|[Tt]o)\s*(U[\.]?S)?\s*\$\s*\d*[\.]?\d{0,2})")
-
-    price_rng2 = re.compile(r"(price is between\s*and\s*per share" +
-                            r"|be between\s*[\$]?\s*and\s*[\$]?\s*per share" +
-                            r"|offering price will be \$\[\s*.*\s*\] per share" +
-                            r"|be between\s*\$\s*\[\s*.*\s*\]\s*and\s*\$\s*\[\s*.*\s*\]\s*)")
-
-    prices_strict = re.compile(r"(offering price (of|is) \$\s*\d+[\.]\d* per (share|ADS)" +
-                               r"|offered\s*(for sale)?\s*at a price of \$\s*\d+[\.]\d* per share" +
-                               r"|offering price per (share|ADS) is \$\s*\d+[\.]\d*" +
-                               r"|offering price (of the|per) ADS[s]? is (U[\.]?S)?\$\s*\d+[\.]\d*" +
-                               r"|offer(ing)? price ([\w]+\s)*\$\s*\d*[\.]?\d{0,2}\s*per share" +
-                               r"|offering price to be (U[\.]?S)?\$\s*\d+[\.]\d* per share)")
-    price_types = re.compile(r"(\$\s*\d*[\.]?\d{0,2}\s[MmBb]il|\$\s*\d*[\.]?\d{0,2})")
-    # price_rng and price_types catches $19.00 mil
-    oprice = re.compile(r"\$\s*\d*[\.]?\d{0,2}")
-
-    s = sentence
-    if any(x.search(s) for x in option_filters):
-        return None
-
-    if any(x.search(s) for x in ipo_filters):
-        # if DEBUG: print(s)
-
-        if re.findall(r'fair value', s):
-            return None # 'Fair value' hypothetical prices
-
-        if price_rng.search(s):
-            offer_prices = price_types.findall(price_rng.search(s).group())
-            if any('mil' in x for x in offer_prices):
-                return None
-            else:
-                offer_prices = [re.sub(r'[\.]$', '', oprice.search(x).group().replace(' ','')) for x in offer_prices]
-                if DEBUG: print(offer_prices)
-                test_prices = [as_cash(x) for x in offer_prices if as_cash(x)]
-
-                if test_prices:
-                    if max(test_prices) > 150:
-                        raise(Exception("Massive Offer Price, above 150!"))
-
-                return offer_prices
-
-        if price_rng2.search(s):
-            if DEBUG: print(s)
-            return ['$', '$']
-
-        if prices_strict.search(s):
-            if DEBUG: print('\nprices_strict =>', s)
-            offer_prices = price_types.findall(prices_strict.search(s).group())
-            if any('mil' in x for x in offer_prices):
-                return None
-            else:
-                return [oprice.search(x).group().replace(' ','') for x in offer_prices]
-                # finds phrases of the form "offering price of $xx.xx per share"
-
+            elif next_elem_is_IPO_price and (re.search(r"\$\d{0,2}[\.]?\d{0,3}", s) or s.strip()=='$'):
+                if '.' in s and re.search(r'\d0$', s):
+                    if DEBUG: print('<Table {}>: IPO price per share is {}'.format(N, s))
+                    yield '<Table {}>: Initial public offering price is {} per share'.format(N, s)
+                    break
+                elif '.' not in s and re.search(r'\$\d\d', s):
+                    if DEBUG: print('<Table {}>: IPO price per share is {}'.format(N, s))
+                    yield '<Table {}>: Initial public offering price is {} per share'.format(N, s)
+                    break
 
 
 
