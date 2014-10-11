@@ -36,21 +36,17 @@ def parse_section(html):
     sub_headers = ["efx_subject_stock_info", "",
                    "efx_the_offering",
                    "efx_registration_fee",
+                   "efx_proceed_use",
                    "efx_financial_data"]
-
-    # supplementary =  "//body/efx_form/descendant::efx_part_ii/descendant::b/text()"
-    # efx_part_ii = [x.strip().lower() for x in html.xpath(supplementary)]
-    # if 'information not required in prospectus' in efx_part_ii:
-    #     return 'information not required in prospectus'
 
     for subheader in sub_headers:
         if subheader:
-            elem_types = "[self::p or self::div]"
+            elem_types = "[self::p or self::div or self::dl]"
             efx_path = "//body/efx_form/descendant::{HEAD}/*{ELEM}"
         else:
-            Nth_elem = int(len(html.xpath("//body/efx_form//*")) / 10)
-            # scan the first 1/10 of all general efx_from elems
-            elem_types = "[position() < {} and (self::p or self::div)]".format(Nth_elem)
+            stop_index = int(len(html.xpath("//body/efx_form//*")) / 8)
+            # scan the first quarter of all general efx_from elems
+            elem_types = "[position() < {} and (self::p or self::div or self::dl)]".format(stop_index)
             efx_path = "//body/efx_form/{HEAD}/*{ELEM}"
 
         efx_elem = html.xpath(efx_path.format(HEAD=subheader, ELEM=elem_types))
@@ -65,10 +61,12 @@ def parse_table(html):
     common_stock = re.compile(r'[Cc]ommon\s*[Ss]tock')
     initial_price = re.compile(r'([Ii]nitial [Pp]rice to [Pp]ublic|[Pp]rice to [Pp]ublic)')
     per_share = re.compile(r'(^[Pp]er [Ss]hare|^[Pp]er ADS|^[Pp]er [Cc]ommon [Uu]nit|^[Pp]er [Uu]nit|^[Pp]er [Cc]ommon [Ss]hare|^Per [Oo]rdinary [Ss]hare)')
-    ipo_table_identifiers = [offer_price, common_stock, initial_price, per_share]
+    midpoint = re.compile(r'[Mm]idpoint of the price\s*range')
+    ipo_table_identifiers = [offer_price, common_stock, initial_price, per_share, midpoint]
 
     # negative search
     earnings = re.compile(r'[Ee]arnings')
+    warrants = re.compile(r'[Ww]arrant')
     balance_sheet_headers = ['cash', 'deferred', 'tax', 'assets', 'depreciation', 'net income', 'liabilities']
 
 
@@ -105,16 +103,20 @@ def parse_table(html):
         next_elem_is_IPO_price = False
         counter = 0
         for s in efx_elems_text:
-            if not s:
-                continue
+
             if counter > 5:
                 if DEBUG: print('break next_elem_is_IPO_price. {}'.format(s))
                 next_elem_is_IPO_price = False
                 counter = 0
 
+            if earnings.search(s) or warrants.search(s):
+                next_elem_is_IPO_price = False
+                continue
+
             if any(id.search(s) for id in ipo_table_identifiers):
                 if not earnings.search(s):
                     next_elem_is_IPO_price = True
+                    counter = 0
                     continue
 
             if next_elem_is_IPO_price:
@@ -138,9 +140,6 @@ def parse_table(html):
 
 def parse_sentence(sentence):
     "Parses sentence/paragraph for IPO price ranges and returns a price range"
-
-    # if sentence == 'information not required in prospectus':
-    #     return ['NAN']
 
     # Filter options, preferreds, convertibles
     convertible = re.compile(r"[Cc]onvertible note[s]?")
@@ -171,16 +170,18 @@ def parse_sentence(sentence):
         r"|\$\s*\d*[\.]?\d{0,2}\s[Aa]nd\s(U[\.]?S)?\s*\$\s*\d{0,2}[\.]?\d{0,2})")
 
     price_rng2 = re.compile(r"(price is between\s*and\s*per (common)?\s*(share|unit)" +
-                            r"|be between\s*[\$]?\s*and\s*[\$]?\s*(common)?\s*(share|unit)" +
+                            r"|be between\s*[\$]?\s*and\s*[\$]?\s*(per)?\s*(common)?\s*(share|unit)" +
                             r"|offering price will be \$\[\s*.*\s*\] (common)?\s*(share|unit)" +
+                            r"|offering price of the shares will be ([\w]+\s)*\$\s*\d*[\.]?\d{0,2}\s*(-|to|~)\s*([\w]+\s)*\$\s*\d*[\.]?\d{0,2} per" +
                             r"|be between\s*\$\s*\[\s*.*\s*\]\s*and\s*\$\s*\[\s*.*\s*\]\s*)")
 
     prices_strict = re.compile(r"(offering price (of|is) \$\s*\d+[\.]\d* per (share|ADS)" +
                                r"|offered\s*(for sale)?\s*at a price of \$\s*\d+[\.]\d* per share" +
                                r"|offering price per (share|ADS) is \$\s*\d+[\.]\d*" +
                                r"|offering price (of the|per) ADS[s]? is (U[\.]?S)?\$\s*\d+[\.]\d*" +
-                               r"|offer(ing)? price ([\w]+\s)*\$\s*\d*[\.]?\d{0,2} per (common)?\s*share" +
-                               r"|[Ww]e (expect|anticipate) ([\w]+\s)*price (will|to) be\s*(U[\.]?S)?\$\s*\d+[\.]\d*" +
+                               r"|offer(ing)? price ([\w]+\s)*\$\s*\d*[\.]?\d{0,2} per (common)?\s*(share|ADS|unit)" +
+                               r"|[Ww]e (expect|anticipate) ([\w]+\s)*price (will|to) be\s*(U[\.]?S)?\$\s*\d+[\.]\d{0,2}" +
+                               r"|[Ii]nitial public offering price of\s*(U[\.]?S)?\$\s*\d+[\.]\d{0,2}per share" +
                                r"|offering price to be (U[\.]?S)?\$\s*\d+[\.]\d* per share)")
     price_types = re.compile(r"(\$\s*\d*[\.]?\d{0,2}\s[MmBb]il|\$\s*\d*[\.]?\d{0,2})")
     # price_rng and price_types catches $19.00 mil
@@ -194,16 +195,18 @@ def parse_sentence(sentence):
         elif anticipate.search(s):
             split_from = anticipate.search(s).span()[0]
             s = s[split_from:]
+        elif price_rng2.search(s):
+            s = s
         else:
             return None
         # Double check options/warrants after splitting sentence in half
-        if any(x.search(s) for x in option_filters):
+        if len([x.search(s) for x in option_filters if x.search(s)]) > 1:
             return None
 
     if any(x.search(s) for x in ipo_identifiers):
         # if DEBUG: print(s)
 
-        if re.search(r'fair value', s):
+        if re.search(r'fair value', s) or re.search(r'net (tangible)?\s*book value', s):
             return None # 'Fair value' hypothetical prices
 
         if price_rng.search(s):
@@ -305,11 +308,10 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
     skipped_ciks = set()
     abnormal_ciks = set()
     DEBUG = False
-
     done_ciks = []
 
-    ciks = sorted(list(set(FINALJSON.keys())))
 
+    ciks = sorted(list(set(FINALJSON.keys())))
 
 
     for i, cik in enumerate(ciks):
@@ -323,13 +325,13 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
         #     skipped_ciks |= {cik}
         #     continue
 
-        # if len([as_cash(s[4][0]) for s in FINALJSON[cik]['Filing'] if as_cash(s[4][0])]) > 2:
-        #     print("Skipping %s %s" % (cik, coname))
-        #     skipped_ciks |= {cik}
-        #     continue
-
-        if not [s[4] for s in FINALJSON[cik]['Filing'] if s[4][0]=='NA']:
+        if len([as_cash(s[4][0]) for s in FINALJSON[cik]['Filing'] if as_cash(s[4][0])]) > 2:
+            print("Skipping %s %s" % (cik, coname))
+            skipped_ciks |= {cik}
             continue
+
+        # if not [s[4] for s in FINALJSON[cik]['Filing'] if s[4][0]=='NA']:
+        #     continue
 
 
         print("\n==> Getting Price Range for: '%s' # %s" % (cik, coname))
@@ -350,17 +352,10 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
             abnormal_ciks |= {cik}
 
         FINALJSON[cik]['Filing'] = list_pr
-        # pprint(price_range)
         print_pricerange(cik)
         print('=== Updated price range for %s ===\n' % cik)
 
         done_ciks.append(cik)
-
-
-
-# done_ciks = ['0018169', '0700923', '0767884', '0867773', '0883981', '0885306', '0895126', '0902622', '0937556', '1004724', '1004945', '1008848', '1024305', '1029299', '1044378', '1051514', '1069899', '1071411', '1071625', '1087294', '1092699', '1093557', '1097503', '1103025', '1104349', '1105360', '1105533', '1109189', '1114529', '1117733', '1118417', '1120105', '1121439', '1121702', '1122897', '1124105', '1125001', '1125294', '1125920', '1126234', '1126741', '1130598', '1130866', '1131096', '1131324', '1131554', '1132484', '1133260', '1138400', '1138639', '1138723', '1138776', '1145197', '1145986', '1157408', '1157780', '1158223', '1159167', '1160958', '1162192', '1162194', '1162245', '1163932', '1167178', '1168195', '1168652', '1169561', '1169652', '1171218', '1173752', '1175505', '1175609', '1175685', '1176948', '1177609', '1178104', '1178336', '1178879', '1180079', '1182325', '1200375', '1201663', '1205431', '1207074', '1212235', '1216199', '1208208', '1227025', '1227930', '1230276', '1230355', '1232524', '1235468', '1237746', '1239819', '1244937', '1246263', '1253689', '1264587', '1265888', '1267602', '1270073', '1271024', '1272830', '1274494', '1274563', '1276187', '1277856', '1280263', '1280776', '1285701', '1287151', '1287213', '1288403', '1289419', '1290096', '1292426', '1292556', '1292653', '1293282', '1293971', '1295557', '1295947', '1245104', '1296391', '1297184', '1297627', '1297989', '1299966', '1301501', '1302028', '1302573', '1302707', '1303313', '1304421', '1305294', '1305323', '1306527', '1307954', '1308858', '1309108', '1310094', '1310663', '1311230', '1311370', '1311486', '1311596', '1312928', '1314592', '1314655', '1315054', '1316656', '1313024', '1316835', '1316925', '1318605', '1318641', '1318885', '1319197', '1319229', '1319327', '1319439', '1319947', '1320092', '1320414', '1320854', '1322439', '1322505', '1322587', '1323630', '1323648', '1323715', '1321834', '1323854', '1323974', '1324245', '1324272', '1324518', '1324410', '1324592', '1324915', '1324948', '1325618', '1325879', '1325955', '1326190', '1326200', '1326428', '1326801', '1327098', '1327471', '1328650', '1329365', '1329919', '1330849', '1331284', '1329799', '1331520', '1332341', '1332602', '1332639', '1333493', '1333513', '1334036', '1334478', '1334814', '1334978', '1335106', '1336691', '1337117', '1337675', '1338065', '1338401', '1338613', '1338949', '1339553', '1339605', '1340744', '1340752', '1341235', '1341769', '1342287', '1342960', '1344376', '1344674', '1347815', '1348259', '1348324', '1349108', '1349436', '1350102', '1350381', '1350593', '1351509', '1352341', '1355007', '1355795', '1356090', '1356949', '1345105', '1357204', '1357326', '1357371', '1357525', '1358071', '1358164', '1358656', '1360530', '1360537', '1360683', '1360886', '1361113', '1361709', '1361983', '1362004', '1362614', '1362988', '1364099', '1364541', '1365038', '1365555', '1365916', '1366246', '1366340', '1366649', '1367064', '1367705', '1367920', '1368265', '1368308', '1368519', '1609804', '1368582', '1368900', '1369568', '1369786', '1369817', '1370314', '1370880', '1372664', '1373670', '1373715', '1373980', '1374690', '1375083', '1375151', '1375200', '1375557', '1376139', '1378140', '1375877', '1378718', '1378789', '1379009', '1379246', '1379378', '1379661', '1380393', '1381197', '1381325', '1382696', '1382911', '1383650', '1383701', '1384072', '1384101', '1385280', '1385292', '1385544', '1385613', '1386198', '1386278', '1387467', '1388430', '1388775', '1389002', '1389030', '1389170', '1389545', '1391390', '1391672', '1392091', '1393052', '1393726', '1393744', '1393818', '1394074', '1394159', '1394954', '1395593', '1395942', '1395943', '1396546', '1396838', '1397821', '1398659', '1399249', '1399529', '1400400', '1400810', '1401112', '1401257', '1401678', '1401680', '1402057', '1402436', '1402606', '1403161', '1403385', '1403431', '1402829', '1403794', '1403795', '1411861', '1413159', '1413447', '1414475', '1415301', '1415336', '1415624', '1416792', '1419178', '1419852', '1420302', '1420800', '1421525', '1419945', '1421526', '1422892', '1423542', '1423902', '1424929', '1425565', '1426800', '1428875', '1429560', '1430592', '1430723', '1433270', '1433714', '1434524', '1434588', '1434754', '1434868', '1436304', '1436549', '1436612', '1437260', '1437786', '1438133', '1439199', '1439404', '1441567', '1441634', '1441849', '1442620', '1446847', '1449488', '1451951', '1452575', '1452751', '1453820', '1454189', '1459417', '1460801', '1462633', '1463258', '1464591', '1463471', '1467858', '1468328', '1469606', '1470099', '1471038', '1471261', '1472343', '1473597', '1474627', '1475274', '1475922', '1477200', '1477246', '1478085', '1478121', '1481055', '1481506', '1481582', '1483934', '1485469', '1486159', '1486299', '1486800', '1487371', '1487525', '1487712', '1487990', '1487999', '1488039', '1488139', '1488613', '1488917', '1489077', '1489147', '1489784', '1490165', '1490281', '1490412', '1491576', '1492426', '1492674', '1492966', '1495153', '1495320', '1495479', '1497504', '1498710', '1499505', '1500866', '1502916', '1499780', '1503584', '1503802', '1504379', '1505512', '1504461', '1505732', '1506307', '1508478', '1509190', '1509589', '1509991', '1510326', '1510580', '1513818', '1513845', '1513965', '1514705', '1515673', '1516007', '1517022', '1517175', '1517228', '1519061', '1517342', '1522727', '1523733', '1524931', '1525287', '1525998', '1526119', '1526796', '1527166', '1528396', '1528837', '1528849', '1533454', '1533932', '1534287', '1534504', '1535031', '1536035', '1537028', '1537054', '1540729', '1540947', '1546296', '1546417', '1547459', '1549107', '1549346', '1549848', '1552797', '1553588', '1554859', '1555177', '1555365', '1555492', '1555538', '1556766', '1556884', '1557860', '1558785', '1559865', '1561660', '1561680', '1561743', '1563411', '1564180', '1565228', '1566049', '1567683', '1568832', '1572684', '1572910', '1573166', '1574111', '1574235', '1574565', '1574596', '1574963', '1575515', '1576018', '1576044', '1576940', '1578318', '1578453', '1578685', '1578809', '1579298', '1579910', '1580670', '1564709', '1580732', '1581720', '1581804', '1581908', '1581990', '1582086', '1582568', '1582966', '1582982', '1583744', '1584509', '1584831', '1585064', '1585854', '1586049']
-
-
 
 
 
@@ -371,6 +366,8 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
 def print_pricerange(s):
     "arg s: either firmname or cik. Returns price-ranges"
 
+    if not isinstance(s, str):
+        s = str(s)
     if not s.isdigit():
         cik = [k for k in FINALJSON if firmname(k).lower().startswith(s.lower())][0]
     else:
@@ -394,37 +391,6 @@ def print_pricerange(s):
 
 
 
-def get_offered_shares(filename):
-
-    with open(filename, encoding='latin-1') as f:
-        html = etree.HTML(f.read())
-
-    for offered_shares in map(parse_shares, parse_section(html)):
-        if offered_shares:
-            return offered_shares
-
-def parse_shares(sentence):
-
-    # Check is IPO relevant paragraph
-    is_an_ipo = re.compile(r"[Ii]nitial\s+[Pp]ublic\s+[Oo]ffering")
-    common_stock = re.compile(r"common stock in the offering")
-    class_A = re.compile(r"[Cc]lass\s*[AB]\s*([Cc]ommon)?[Ss]tock")
-    no_public = re.compile(r"(no\s*(established)?\s*public\s*(trading)?\s*market" +
-                           r"|no\s*current\s*market\s*for\s*our\s*([Cc]ommon)?\s*[Ss]tock"
-                           r"|not been a public market for our [Cc]ommon\s*[Ss]tock)")
-    cshares = re.compile(r'\d{0,3}[,]?\d{0,3}[,]?\d{0,3}[,]?\d{3}\s*[Ss]hares')
-
-    s = sentence
-    if is_an_ipo.findall(s) or common_stock.findall(s) or no_public.findall(s) or class_A.findall(s):
-        if cshares.search(s):
-            return cshares.search(s).group()
-
-
-
-
-
-
-
 
 
 
@@ -433,10 +399,15 @@ def testfiles(cik):
 
 
 
+
 if __name__=='__main__':
 
     # with open('final_json.txt', 'w') as f:
     #     f.write(json.dumps(FINALJSON, indent=4, sort_keys=True))
+
+    # with open('full_json.txt', 'w') as f:
+    #     f.write(json.dumps(FULLJSON, indent=4, sort_keys=True))
+
 
     cik = '1326801' # Facebook
     cik = '1318605' # Tesla Motors
@@ -477,12 +448,14 @@ if __name__=='__main__':
 
     # Units, ADRs, etc
     # metadata[metadata['Issue Type Code'] != '0']
-    badciks = ['0860413', '1070336', '1127393', '1131312', '1287668', '1290059', '1302176', '1302324', '1303942', '1308106', '1310313', '1332174', '1336249', '1337068', '1340282', '1347426', '1349892', '1353691', '1354730', '1361916', '1370433', '1370946', '1376227', '1376556', '1378239', '1379606', '1381668', '1382230', '1399521', '1401573', '1402902', '1410402', '1412203', '1434620', '1434621', '1492915', '1507385']
+    # FULLJSON ciks
+    # badciks = ['0860413', '1070336', '1127393', '1131312', '1287668', '1290059', '1302176', '1302324', '1303942', '1308106', '1310313', '1332174', '1336249', '1337068', '1340282', '1347426', '1349892', '1353691', '1354730', '1361916', '1370433', '1370946', '1376227', '1376556', '1378239', '1379606', '1381668', '1382230', '1399521', '1401573', '1402902', '1410402', '1412203', '1434620', '1434621', '1492915', '1507385']
 
-    bciks = iter(badciks[3:])
 
-    cik = next(bciks)
+    ciks = ['1071625', '1276187', '1334814', '1372000', '1379009', '1405197', '1408710', '1420850', '1574565']
+
+    cik = '1420850'
     print("{}:{}".format(cik, firmname(cik)))
     tf = testfiles(cik)
     price_range = [get_price_range(f) for f in tf]
-    print(price_range)
+    print_pricerange(cik)
