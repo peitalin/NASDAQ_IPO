@@ -325,10 +325,10 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
         #     skipped_ciks |= {cik}
         #     continue
 
-        if len([as_cash(s[4][0]) for s in FINALJSON[cik]['Filing'] if as_cash(s[4][0])]) > 2:
-            print("Skipping %s %s" % (cik, coname))
-            skipped_ciks |= {cik}
-            continue
+        # if len([as_cash(s[4][0]) for s in FINALJSON[cik]['Filing'] if as_cash(s[4][0])]) > 2:
+        #     print("Skipping %s %s" % (cik, coname))
+        #     skipped_ciks |= {cik}
+        #     continue
 
         # if not [s[4] for s in FINALJSON[cik]['Filing'] if s[4][0]=='NA']:
         #     continue
@@ -400,6 +400,7 @@ def testfiles(cik):
 
 
 
+
 if __name__=='__main__':
 
     # with open('final_json.txt', 'w') as f:
@@ -453,9 +454,29 @@ if __name__=='__main__':
 
 
     ciks = ['1071625', '1276187', '1334814', '1372000', '1379009', '1405197', '1408710', '1420850', '1574565']
+    ciks = list(inc.keys())
 
     cik = '1420850'
     print("{}:{}".format(cik, firmname(cik)))
     tf = testfiles(cik)
     price_range = [get_price_range(f) for f in tf]
     print_pricerange(cik)
+
+
+    adr = {
+        '1329099': 'BAIDU, INC.',
+        '1339729': 'ORCHARD ENTERPRISES, INC.',
+        '1509223': 'RENREN INC.',
+        '1127393': 'HEMOSENSE INC',
+        '1342068': 'ACTIONS SEMICONDUCTOR CO., LTD.',
+        '1342803': 'SUNTECH POWER HOLDINGS CO., LTD.',
+        '1365241': 'GMARKET INC.',
+        '1544856': 'CENCOSUD S.A.',
+        '1579877': 'CBS OUTDOOR AMERICAS INC.',
+        '1385424': 'LDK SOLAR CO., LTD.',
+        '1345111': 'TIM HORTONS INC.',
+        '1381197': 'INTERACTIVE BROKERS GROUP, INC.',
+        '1499934': 'COUNTRY STYLE COOKING RESTAURANT CHAIN CO., LTD.',
+        '1417892': 'RENESOLA LTD',
+        '1544175': 'EDWARDS GROUP LTD'
+        }
