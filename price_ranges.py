@@ -245,10 +245,6 @@ def parse_sentence(sentence):
 
 
 
-def rf(filename):
-    with open(filename, encoding='latin-1') as f:
-        return etree.HTML(f.read())
-
 
 def get_price_range(filename):
     "Reads S-1 filings and parses for price ranges with parse_section() and parse_table() functions."
@@ -310,9 +306,7 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
     DEBUG = False
     done_ciks = []
 
-
     ciks = sorted(list(set(FINALJSON.keys())))
-
 
     for i, cik in enumerate(ciks):
         if cik in done_ciks:
@@ -391,11 +385,13 @@ def print_pricerange(s):
 
 
 
-
-
+def rf(filename):
+    with open(filename, encoding='latin-1') as f:
+        return etree.HTML(f.read())
 
 def testfiles(cik):
     return [x for x in glob.glob(os.path.join(FILEDIR, cik) + '/*') if 'filing.ashx?' in x]
+
 
 
 
@@ -450,16 +446,18 @@ if __name__=='__main__':
     # Units, ADRs, etc
     # metadata[metadata['Issue Type Code'] != '0']
     # FULLJSON ciks
-    # badciks = ['0860413', '1070336', '1127393', '1131312', '1287668', '1290059', '1302176', '1302324', '1303942', '1308106', '1310313', '1332174', '1336249', '1337068', '1340282', '1347426', '1349892', '1353691', '1354730', '1361916', '1370433', '1370946', '1376227', '1376556', '1378239', '1379606', '1381668', '1382230', '1399521', '1401573', '1402902', '1410402', '1412203', '1434620', '1434621', '1492915', '1507385']
 
 
-    ciks = ['1071625', '1276187', '1334814', '1372000', '1379009', '1405197', '1408710', '1420850', '1574565']
-    ciks = list(inc.keys())
+    # ciks = ['1071625', '1276187', '1334814', '1372000', '1379009', '1405197', '1408710', '1420850', '1574565']
+
+    ciks = ['0860413', '1070336', '1127393', '1131312', '1287668', '1290059', '1302176', '1302324', '1303942', '1308106', '1310313', '1332174', '1336249', '1337068', '1340282', '1347426', '1349892', '1353691', '1354730', '1361916', '1370433', '1370946', '1376227', '1376556', '1378239', '1379606', '1381668', '1382230', '1399521', '1401573', '1402902', '1410402', '1412203', '1434620', '1434621', '1492915', '1507385']
+
+    # ciks = list(inc.keys())
 
     cik = '1420850'
     print("{}:{}".format(cik, firmname(cik)))
     tf = testfiles(cik)
-    price_range = [get_price_range(f) for f in tf]
+    price_range = [get_price_range(f) for f in testfiles(cik)]
     print_pricerange(cik)
 
 
