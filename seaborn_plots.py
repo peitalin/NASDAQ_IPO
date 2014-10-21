@@ -129,6 +129,7 @@ if __name__=='__main__':
     # above, under, within = [x[1] for x in revisions.groupby(['offer_in_filing_price_range'])]
 
 
+    """
     g, gdown, gmid, gup, dplotargs = set_data(revisions,
                                         groupby_key='percent_final_price_revision',
                                         hi=10, lo=-0.1,
@@ -144,14 +145,18 @@ if __name__=='__main__':
                                         color_palette='colorblind' )
     sb_distplots(dplotargs, update_type="(Price Updates)")
     # plt.savefig("conditional-returns-updates.png", dpi=200)
-
-
-    ### Linreg plots
-    ### Revisions
     """
+
+
+
+
+def conditional_underpricing_plots():
+    ### Revisions
+    c = sb.color_palette("deep")
+    """
+
     c = sb.color_palette("deep")
     c1, c2 , c3 = c[2], c[3], c[5]
-
     g, gdown, gmid, gup, dplotargs = set_data(revisions,
                                         groupby_key='percent_final_price_revision',
                                         hi=10, lo=-0,
@@ -194,7 +199,7 @@ if __name__=='__main__':
     """
 
 
-def underwriter_price_update_plots():
+def underwriter_facet_plots():
 
     s2 = amendments[['percent_first_price_update' , 'percent_final_price_revision', 'underwriter_tier']]
 
@@ -238,7 +243,6 @@ def underwriter_price_update_plots():
     g.set(xlim=(-80, 80), xticks=[-80, -60, -40, -20, 0, 20, 40, 60, 80],
           ylim=(-80, 80), yticks=[-80, -60, -40, -20, 0, 20, 40, 60, 80]);
     g.add_legend()
-
 
 
 def histograms_price_update_plot():
@@ -290,23 +294,44 @@ def lm_model_plots():
     # Set matplotlibrc backend: TkAgg instead of MacOSX
 
     # ATTENTION
-    sb.lmplot("ln_CASI_all_finance", "IPO_duration", sample2,
-                hue="underwriter_tier", palette=cp_four("cool_r"),
-                robust=True, ci=95, n_boot=500, )
+    sb.lmplot("ln_CASI_all_finance", "percent_first_price_update",  revisions,
+                # hue="amends",
+                palette="deep",
+                # robust=True,
+                # ci=95,
+                # n_boot=500,
+                )
+    # plt.ylim((-50,50))
 
-    obs_num = [len(sample[sample['underwriter_tier']==x])
-                for x in [ '-1', '0+', '7+', '9']]
-    legend_labs = ("No Underwriter, N=",
-                   "Rank 0+, N=",
-                   "Rank 7+, N=",
-                   "Rank 9 (Elites) N=")
-    legend_labs = [x+str(y) for x,y in zip(legend_labs, obs_num)]
+
+    # days_from_priced_to_listing
+    # days_to_first_price_update
+    # percent_first_price_update
+
+    # ATTENTION
+    sb.lmplot("ln_CSI_all_finance", "percent_final_price_revision", revisions,
+                hue="underwriter_tier", palette="deep",
+                # robust=True,
+                # ci=95,
+                # n_boot=500,
+                )
+    plt.ylim((-50,50))
+
+
+    obs_num = {x[0]:len(x[1]) for x in df.groupby('underwriter_tier')}
+    legend_labs = {'-1': "No Underwriter: N={}",
+                   '0+': "Rank 0+: N={}",
+                   '7+': "Rank 7+: N={}",
+                   '9' : "Rank 9:  N={}"}
+
+    legend_labs = sorted(legend_labs[k].format(obs_num[k]) for k in obs_num)
+
     plt.legend(legend_labs)
     plt.xlabel(r"$log(CASI)$")
-    plt.ylim((-200,1600))
-    plt.xlim((-1,11))
-    plt.title('Abnomal attention and IPO Duration (bank rank strata)')
-    # plt.savefig("IPO_duration_attention.pdf", dpi=200, format='pdf')
+    plt.ylim((-50,50))
+    plt.xlim((-20,20))
+    plt.title('Abnormal attention and Price Updates')
+    # plt.savefig("CASI_price_updates.pdf", dpi=200, format='png')
 
 
 
@@ -314,103 +339,14 @@ def lm_model_plots():
 
 
 
-
-
-def uw_tier_histplots():
-    sample['Underwriter Tier'] = sample['lead_underwriter_tier']
-    sample['IPO Duration'] = sample['IPO_duration']
-    ranks = ["-1", "0+", "7+", "9"]
-
-    def uw_tier_duration(x):
-        return sample[sample.lead_underwriter_tier==x]['IPO_duration']
-    kwstat = kruskalwallis(*[uw_tier_duration(x) for x in ranks])
-
-    # g = sb.FacetGrid(sample,
-    #                 row="Underwriter Tier",
-    #                 hue="Underwriter Tier",
-    #                 palette=cp_four("cool_r"),
-    #                 size=2, aspect=4,
-    #                 hue_order=ranks, row_order=ranks,
-    #                 legend=ranks, xlim=(0,1095))
-    # g.map(sb.distplot, "IPO Duration")
-    # plt.savefig("IPO_tiers_KP_survival.pdf", format='pdf', dpi=200)
-
-
-    from lifelines.estimation import KaplanMeierFitter
-    from lifelines.statistics import logrank_test
-    import matplotlib.pyplot as plt
-
-    ranks = ["-1", "0+", "7+", "9"]
-    ranklabels = ['No Underwriter', 'Low Rank', 'Mid Rank', 'Rank 9 (elite)']
-    kmf = KaplanMeierFitter()
-
-    # Success
-    f, ax = plt.subplots(1,1,figsize=(12, 4), sharex=True)
-    T = 1 # annotation line thickness
-
-    for rank, rlabel, color in zip(ranks, ranklabels, cp_four("cool_r")):
-        uw = sample[sample.lead_underwriter_tier==rank]
-
-        kmf.fit(uw['IPO_duration'],
-                label='{} N={}'.format(rlabel, len(uw)),
-                alpha=0.9)
-        kmf.plot(ax=ax, c=color, alpha=0.7)
-
-        quartiles = [int(np.percentile(kmf.durations, x)) for x in [25, 50, 75]][::-1]
-        aprops = dict(facecolor=color, width=T, headwidth=T)
-
-        if rank=="-1":
-            plt.annotate("75%: {} days".format(quartiles[0]),
-                        (quartiles[0], 0.25),
-                        xytext=(quartiles[0]+145, 0.25+.04),
-                        arrowprops=aprops)
-
-            plt.annotate("50%: {} days".format(quartiles[1]),
-                        (quartiles[1], 0.50),
-                        xytext=(quartiles[1]+145, 0.50+.04),
-                        arrowprops=aprops)
-
-            plt.annotate("25%: {} days".format(quartiles[2]),
-                        (quartiles[2], 0.75),
-                        xytext=(quartiles[2]+145, 0.75+0.04),
-                        arrowprops=aprops)
-        elif rank=="9":
-            plt.annotate("75%: {} days".format(quartiles[0]),
-                        (quartiles[0], 0.25),
-                        xytext=(quartiles[0]+415, 0.25+.1),
-                        arrowprops=aprops)
-
-            plt.annotate("50%: {} days".format(quartiles[1]),
-                        (quartiles[1], 0.50),
-                        xytext=(quartiles[1]+290, 0.50+.1),
-                        arrowprops=aprops)
-
-            plt.annotate("25%: {} days".format(quartiles[2]),
-                        (quartiles[2], 0.75),
-                        xytext=(quartiles[2]+165, 0.75+0.1),
-                        arrowprops=aprops)
-
-    plt.annotate("Kruskall Wallis\nH: {:.3f}\nprob: {:.3f}".format(*kwstat),
-                (960, 0.1))
-    plt.ylim(0,1)
-    plt.xlim(0,1095)
-    plt.title("Kaplan-Meier survival times by bank tier")
-    plt.xlabel("IPO Duration (days)")
-    plt.ylabel(r"$S(t)=Pr(T>t)$")
-    plt.savefig("IPO_tiers_KP_survival.pdf", format='pdf', dpi=200)
-
-
-
-
-
-
-def plot_var_dist(plotargs, kkey='IPO_duration', kw_xy=(20,20)):
+def plot_var_dist(plotargs, kkey, kw_xy=(20,20), color="muted"):
 
     f, ax = plt.subplots(1,1, figsize=(12, 4), sharex=True)
+    cpalette = sb.color_palette(color)
 
     for arg in plotargs:
-        df, label, color, xshift, yshift = arg
-        color = sb.color_palette("muted")[color]
+        df, label, color_num, xshift, yshift = arg
+        color = cpalette[color_num]
         label += " Obs={}".format(len(df))
 
         # Summary stats:
@@ -422,26 +358,27 @@ def plot_var_dist(plotargs, kkey='IPO_duration', kw_xy=(20,20)):
         stat = u"\nμ={:0.2f}  med={:0.2f}\nσ={:0.2f}  skew={:0.2f}".format(
                 mean, med, std, skew)
 
-        yvals, xvals, patchs = plt.hist(df[kkey].tolist(), bins=36, label=label,
+        yvals, xvals, patchs = plt.hist(df[kkey].tolist(), bins=64, label=label,
                                 color=color, alpha=0.6, histtype='stepfilled')
 
         coords = list(zip(yvals,xvals))
         coords.sort()
-        y,x = coords[-3]
+        y, x = coords[-2]
+        # x = med
 
         ax.annotate(stat,
                     xy=(x, y),
                     xytext=(x*xshift, y*yshift),
-                    arrowprops=dict(facecolor=color,
-                                    width=1.6,
-                                    headwidth=1.6))
+                    arrowprops={'facecolor': color, 'width': 1.6, 'headwidth': 1.6})
 
     H, prob = kruskalwallis(*[x[0][kkey] for x in plotargs])
     # U, prob = mannwhitneyu(*[x[0][kkey] for x in plotargs])
-    ax.annotate("Kruskal-Wallis: (H={H:.2f}, prob={p:.3f})".format(H=H, p=prob),
+    ax.annotate("Kruskal-Wallis:\nH={H:.2f}\nprob={p:.3f}".format(H=H, p=prob),
                 xy=(kw_xy[0], kw_xy[1]))
     plt.ylabel("Frequency")
     plt.legend()
+
+
 
 
 def plot_kaplan_function():
@@ -451,11 +388,12 @@ def plot_kaplan_function():
     import matplotlib.pyplot as plt
 
     kmf = KaplanMeierFitter()
+    colors = sb.color_palette('colorblind')
 
-    # Success
+    # Amends
     f, ax = plt.subplots(1,1,figsize=(12, 4), sharex=True)
     T = 1 # annotation line thickness
-    kmf.fit(success['IPO_duration'], label='Successful IPOs N=825', alpha=0.9)
+    kmf.fit(amendments['days_to_first_price_update'], label='Updated', alpha=0.9)
     kmf.plot(ax=ax, c=colors[5], alpha=0.7)
 
     quartiles = [int(np.percentile(kmf.durations, x)) for x in [25, 50, 75]][::-1]
@@ -477,80 +415,131 @@ def plot_kaplan_function():
                 arrowprops=aprops)
 
 
-    # WITHDRAW
-    kmf.fit(withdraw['IPO_duration'],
-            label = 'Withdrawn IPOs N={}'.format(len(withdraw)),
-            event_observed=withdraw['observed'])
-    kmf.plot(ax=ax, c=colors[2], alpha=0.7)
-
-    quartiles = [int(np.percentile(kmf.durations, x)) for x in [25, 50, 75]][::-1]
-    aprops = dict(facecolor=colors[2], width=T, headwidth=T)
-
-    plt.annotate("75%: {} days".format(quartiles[0]),
-                (quartiles[0], 0.25),
-                xytext=(quartiles[0]+46, 0.25+.04),
-                arrowprops=aprops)
-
-    plt.annotate("50%: {} days".format(quartiles[1]),
-                (quartiles[1], 0.50),
-                xytext=(quartiles[1]+46, 0.50+.04),
-                arrowprops=aprops)
-
-    plt.annotate("25%: {} days".format(quartiles[2]),
-                (quartiles[2], 0.75),
-                xytext=(quartiles[2]+46, 0.75+.04),
-                arrowprops=aprops)
-
-    # log rank tests + general graph labels
-    summary, p_value, results = logrank_test(
-                                    success['IPO_duration'],
-                                    withdraw['IPO_duration'],
-                                    alpha=0.95)
-    ax.annotate("Log-rank test: (prob={p:.3f})".format(p=p_value),
-                xy=(1210, 0.08))
-
-    plt.ylim(0,1)
-    plt.xlim(0,1460)
-    plt.title("Kaplan-Meier Survival Functions")
-    plt.xlabel("IPO Duration (days)")
-    plt.ylabel(r"$S(t)=Pr(T>t)$")
 
 
-    # # Durations plots
-    # plotargs = [(success, "Successful IPOs", 5, 1.4, 1.1),
-    #             (withdraw, "Withdrawn IPOs", 2, 1.3, 1.2)]
-    # plot_var_dist(plotargs, kw_xy=(1100, 10))
-    # plt.xlim(xmin=0, xmax=1460)
-    # plt.xlabel("IPO Duration (days)")
-    # plt.title("Book-build IPO durations")
-    # plt.savefig("./succ_vs_withdraw_duration.pdf", dpi=200, format='pdf')
 
 
-    # # Attention plots
-    # plotargs = [(success, "Successful IPOs", 5, 1.05, 1.4),
-    #             (withdraw, "Withdrawn IPOs", 2, 0.7, 9.1)]
-    # plot_var_dist(plotargs, kkey='ln_CASI_all_finance', kw_xy=(7.6, 20))
-    # plt.xlabel("Log Cumulative Abnormal Search Interest (all)")
-    # plt.title("Abnormal Attention During Book-build IPOs")
-    # plt.savefig("./succ_vs_withdraw_CASI.pdf", dpi=200, format='pdf')
 
 
-    # # Attention plots
-    # plotargs = [(success, "Successful IPOs", 5, 1.05, 1.4),
-    #             (withdraw, "Withdrawn IPOs", 2, 0.7, 9.1)]
-    # plot_var_dist(plotargs, kkey='ln_CASI_all_finance', kw_xy=(7.6, 20))
-    # plt.xlabel("Log Cumulative Abnormal Search Interest (all)")
-    # plt.title("Abnormal Attention During Book-build IPOs")
-    # plt.savefig("./succ_vs_withdraw_CASI.pdf", dpi=200, format='pdf')
+"""
+
+# # Attention plots
+## REVISIONS
+########
 
 
-    # plot_kaplan_function()
-    # plt.savefig("./succ_vs_withdraw_Kaplan_Meier.pdf", dpi=200, format='pdf')
-    # uw_tier_histplots()
+days = 60
+IOTKEY = 'ln_{}day_CASI_all'.format(days)
+above, under, within = [x[1] for x in revisions.groupby('offer_in_filing_price_range')]
+
+cik1, cik2 = above[above[IOTKEY] == 0][:2].index
+cik3, cik4 = under[under[IOTKEY] == 0][:2].index
+cik5, cik6 = within[within[IOTKEY] == 0][:2].index
+above.loc[cik1, IOTKEY] = 8
+above.loc[cik2, IOTKEY] = -8
+under.loc[cik3, IOTKEY] = 8
+under.loc[cik4, IOTKEY] = -8
+within.loc[cik5, IOTKEY] = 8
+within.loc[cik6, IOTKEY] = -8
+########
+
+plotargs = [
+        (within, "Within Price Range", 3, 1.1, 2.4),
+        (under, "Under Price Range", 2, 1.2, 1.9),
+        (above, "Above Price Range", 5, 1.1, 1.2),
+            ]
+plot_var_dist(plotargs, kkey=IOTKEY, kw_xy=(-7.2, 22))
+plt.xlabel(IOTKEY.replace("_", " "))
+plt.title("Abnormal Attention and Price Revision Groups")
+######
+above.loc[cik1, IOTKEY] = 0
+above.loc[cik2, IOTKEY] = 0
+under.loc[cik3, IOTKEY] = 0
+under.loc[cik4, IOTKEY] = 0
+within.loc[cik5, IOTKEY] = 0
+within.loc[cik6, IOTKEY] = 0
+#####
+plt.savefig("/Users/peitalin/Desktop/iot_revisions_{}d.png".format(days), dpi=200, format='png')
 
 
-    # IoT summary stats
-    # iot_keys = [x for x in df.keys() if x.startswith('IoT')] + ["offer_in_filing_price_range"]
-    # df[iot_keys].groupby("offer_in_filing_price_range").describe()
 
 
+## UPDATES
+
+
+days = 60
+IOTKEY = 'ln_{}day_CASI_all'.format(days)
+down, noupdate, up = [x[1] for x in revisions.groupby('amends')]
+cik1, cik2 = above[above[IOTKEY] == 0][:2].index
+cik3, cik4 = under[under[IOTKEY] == 0][:2].index
+cik5, cik6 = within[within[IOTKEY] == 0][:2].index
+down.loc[cik1, IOTKEY] = 8
+down.loc[cik2, IOTKEY] = -8
+up.loc[cik3, IOTKEY] = 8
+up.loc[cik4, IOTKEY] = -8
+noupdate.loc[cik5, IOTKEY] = 8
+noupdate.loc[cik6, IOTKEY] = -8
+
+plotargs = [
+            (noupdate, "No Update", 3, 1.1, 2.6),
+            (down, "Down", 2, 1.22, 2.4),
+            (up, "Up", 5, 1.1, 2.9),
+            ]
+plot_var_dist(plotargs, kkey=IOTKEY, kw_xy=(-7.2, 22))
+plt.xlabel(IOTKEY.replace("_", " "))
+plt.title("Abnormal Attention and Price Amendments")
+#####
+down.loc[cik1, IOTKEY] = 0
+down.loc[cik2, IOTKEY] = 0
+up.loc[cik3, IOTKEY] = 0
+up.loc[cik4, IOTKEY] = 0
+noupdate.loc[cik5, IOTKEY] = 0
+noupdate.loc[cik6, IOTKEY] = 0
+#####
+plt.savefig("/Users/peitalin/Desktop/iot_amends_{}d.png".format(days), dpi=200, format='png')
+
+
+"""
+
+
+
+def uw_tier(uw_rank):
+    if uw_rank > 8.5:
+        return "8.5+"
+    elif uw_rank > 6:
+        return "6+"
+    elif uw_rank >= 0:
+        return "0+"
+    elif uw_rank < 0:
+        return "-1"
+
+
+"""
+
+df = pd.read_csv(BASEDIR + '/df.csv', dtype={'cik':object})
+df.set_index('cik', inplace=True)
+
+
+df['underwriter_tier'] = [uw_tier(r) for r in df['underwriter_rank_avg']]
+amendments = df[~df.size_of_first_price_update.isnull()]
+revisions = df[~df.size_of_final_price_revision.isnull()]
+
+amendments['percent_final_price_revision'] *= 100
+amendments['percent_first_price_update'] *= 100
+amendments['close_return'] *= 100
+
+revisions['percent_final_price_revision'] *= 100
+revisions['percent_first_price_update'] *= 100
+revisions['close_return'] *= 100
+r1, r0, r6, r9 = [x[1] for x in revisions.groupby('underwriter_tier')]
+
+
+plotargs = [(r9, "Rank 8.5+", 5, 1.06, 1.2),
+            (r6, "Rank 6+", 3, 1.1, 1.2),
+            (r0, "Rank 0+", 2, 1.1, 1.2)]
+plot_var_dist(plotargs, kkey='ln_CSI_all_finance', kw_xy=(8.1, 74))
+plt.xlabel("ln(CASI)")
+plt.xlim(0,9)
+plt.title("Abnormal Attention and Price Amendments")
+
+"""

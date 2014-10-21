@@ -136,8 +136,6 @@ def parse_table(html):
                     break
 
 
-
-
 def parse_sentence(sentence):
     "Parses sentence/paragraph for IPO price ranges and returns a price range"
 
