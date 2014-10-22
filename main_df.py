@@ -779,18 +779,20 @@ def from_FINALJSON_to_df():
 
 
 
-def attention_measures(ciks, category):
+def attention_measures(ciks, category, event='final', makedir=False):
     """Calculates ASI (abnormal search interest) and CASI (cumulative abnormal search interest)
-        ASI = IoT - IoT_30day_median (30day can be arbitrary days back)
+        ASI = IoT - IoT_{n}day_median ({n}=15, 30, or 60 days back)
     Args:
-        --category: 'business-industrial', 'finance', 'investing', 'all'
-        --df= dataframe
+        --category: 'business_industrial', 'finance', 'all'
+        --df: dataframe
+        --event: ['final', '1st_update', 'listing']
     """
 
     from pandas.stats.moments import rolling_median, rolling_sum
     QDIR = os.path.join(os.path.expanduser('~'), 'Dropbox', 'gtrends-beta', 'cik-ipo', 'query_counts')
-    QWEIGHTS = {'missing':0, 'weekly': 0.5, 'daily': 1}
-    CATEGORYID = {'all': '0', 'finance': '0-7', 'business-industrial': '0-12'}
+    QWEIGHTS = {'missing':-1, 'weekly': 0, 'daily': 1}
+    CATEGORYID = {'all': '0', 'finance': '0-7', 'business_industrial': '0-12'}
+    EVENT = {'final': 'final-price-revision', 'listing': 'listing-date', '1st_update': '1st-price-update'}
 
     def build_qcount_dict(category):
         qdict = {}
@@ -828,7 +830,7 @@ def attention_measures(ciks, category):
             else:
                 end_date = trade_date
 
-        elif event=='1st_update':
+        elif event!='listing':
             if firm['days_to_first_price_update'] < firm['days_to_final_price_revision']:
                 end_date = start_date.replace(days=firm['days_to_first_price_update'])
             elif not np.isnan(firm['days_to_final_price_revision']):
@@ -859,25 +861,19 @@ def attention_measures(ciks, category):
             return sign(CASI) * ((1 + abs(CASI))**lambda_param - 1) / lambda_param
 
     def rolling_attention(iot, window):
-
-        def ASI(iot, iot_median):
-            if iot_median != iot_median:
-                return iot
-            return iot / iot_median if iot_median != 0 else iot
-
+        "callback function for ASI calculations"
         w = window
         firm = iot.columns[0]
         iot['%sday_median' % w] = rolling_median(iot[firm], w)
-        iot['%sday_ASI' % w] = [ASI(*x) for x in zip(iot[firm], iot['%sday_median' % w])]
-        # iot['%sday_ASI' % w] = iot[firm] / iot['%sday_median' % w]
+        iot['%sday_ASI' % w] = log((1 + iot[firm]) / (1 + iot['%sday_median' % w]))
         iot['%sday_CASI' % w] = rolling_sum(iot['%sday_ASI' % w], w)
         return iot
 
     # ciks = ['1439404', '1418091', '1271024', '1500435', '1318605', '1594109', '1326801', '1564902']
 
     for i, cik in enumerate(ciks):
-        iprint('Crunching interest-over-time <{}>: {} {}'.format(
-                category, cik, firmname(cik)))
+        iprint('Computing interest-over-time <{}, {}>: {} {}'.format(
+                category, EVENT[event], cik, firmname(cik)))
 
         iot_raw_data = pd.read_csv(gtrends_file(cik=cik, category=category),
                                 parse_dates=[0],
@@ -891,16 +887,15 @@ def attention_measures(ciks, category):
         iot = rolling_attention(iot, window=30)
         iot = rolling_attention(iot, window=60)
 
-        end_date = get_end_date(cik, event='final')
-        df.loc[cik, 'gtrends_name'] = firm
+        end_date = get_end_date(cik, event=event)
+        # df.loc[cik, 'gtrends_name'] = firm
         df.loc[cik, 'IoT_entity_type'] = get_entity_type(iot_raw_data, df)
-        # if iot['15day_CASI'].loc[end_date] != iot['15day_CASI'].loc[end_date]:
-        #     break
 
         df.loc[cik, 'IoT_15day_CASI_%s' % category] = iot['15day_CASI'].loc[end_date]
         df.loc[cik, 'IoT_30day_CASI_%s' % category] = iot['30day_CASI'].loc[end_date]
         df.loc[cik, 'IoT_60day_CASI_%s' % category] = iot['60day_CASI'].loc[end_date]
-        make_dir(cik, category)
+        if makedir:
+            make_dir(cik, category)
 
     entity_types = Counter(df['IoT_entity_type'])
     return entity_types
@@ -911,34 +906,24 @@ def attention_measures(ciks, category):
 
 
 
-def weighted_iot(df, weighting='value_weighted'):
+def weighted_iot(df, window=15, weighting='equal'):
 
-    all_iot = sum(1 for x in df["IoT_CASI_all"] if x != 0)
-    finance = sum(1 for x in df["IoT_CASI_finance"] if x != 0)
-    bus_ind = sum(1 for x in df["IoT_CASI_business_industrial"] if x != 0)
-    # invest  = sum(1 for x in df["IoT_CASI_investing"] if x != 0)
-    # total   = all_iot + busnews + finance + invest
-    total = all_iot + finance + bus_ind
+    w = window
 
     if weighting=='value_weighted':
+        all_iot = sum(1 for x in df["IoT_{}day_CASI_all".format(w)] if x != 0)
+        finance = sum(1 for x in df["IoT_{}day_CASI_finance".format(w)] if x != 0)
+        bus_ind = sum(1 for x in df["IoT_{}day_CASI_business_industrial".format(w)] if x != 0)
+        total = all_iot + finance + bus_ind
         wa = weight_all_iot = all_iot/total
         wf = weight_finance = finance/total
         wb = weight_bus_ind = bus_ind/total
-        # wi = weight_invest  = invest/total
     else:
-        # wa, wb, wf, wi = [1/4, 1/4, 1/4, 1/4]
         wa, wf, wb = [1/3, 1/3, 1/3]
 
-    df['IoT_median_all_finance'] = wa*df['IoT_median_all'] + wf*df['IoT_median_finance'] + wb*df['IoT_median_business_industrial']
-    df['IoT_CASI_all_finance'] = wa*df['IoT_CASI_all'] + wf*df['IoT_CASI_finance'] + wb*df['IoT_CASI_business_industrial']
-    df['IoT_CSI_all_finance'] = wa*df['IoT_CSI_all'] + wf*df['IoT_CSI_finance'] + wb*df['IoT_CSI_business_industrial']
-
-    # df['IoT_median_all_finance'] = wa*df['IoT_median_all'] + wb*df['IoT_median_business-industrial'] + wf*df['IoT_median_finance'] + wi*df['IoT_median_investing']
-
-    # df['IoT_CASI_all_finance'] = wa*df['IoT_CASI_all'] + wb*df['IoT_CASI_business-industrial'] + wf*df['IoT_CASI_finance'] + wi*df['IoT_CASI_investing']
-
-    # df['IoT_CSI_all_finance'] = wa*df['IoT_CSI_all'] + wb*df['IoT_CSI_business-industrial'] + wf*df['IoT_CSI_finance'] + wi*df['IoT_CSI_investing']
-
+    df['IoT_{}day_CASI_weighted_finance'.format(w)] = wa * df['IoT_{}day_CASI_all'.format(w)] + \
+                                                wf * df['IoT_{}day_CASI_finance'.format(w)] + \
+                                                wb * df['IoT_{}day_CASI_business_industrial'.format(w)]
     return df
 
 
@@ -1029,40 +1014,33 @@ def plot_iot(cik, category=''):
 
 def process_IOT_variables():
 
-    entities1 = attention_measures(df.index, 'all')
-    entities2 = attention_measures(df.index, 'finance')
-    entities3 = attention_measures(df.index, 'business_industrial')
+    entities1 = attention_measures(df.index, 'all', event='final')
+    entities2 = attention_measures(df.index, 'finance', event='final')
+    entities3 = attention_measures(df.index, 'business_industrial', event='final')
 
-    dt = weighted_iot(df, weighting='equal')
+    df = weighted_iot(df, window=15, weighting='equal')
+    df = weighted_iot(df, window=30, weighting='equal')
+    df = weighted_iot(df, window=60, weighting='equal')
 
-
-    def box_cox(CASI, lambda_param=0):
-        "Returns the John & Draper (1980) modulus transformation"
-        if lambda_param == 0:
-            return sign(CASI) * log(1 + abs(CASI))
-        else:
-            return sign(CASI) * ((1 + abs(CASI))**lambda_param - 1) / lambda_param
-
-
-
-    iot_dict = {
-            'IoT_15day_CASI_all': 'ln_15day_CASI_all',
-            'IoT_30day_CASI_all': 'ln_30day_CASI_all',
-            'IoT_60day_CASI_all': 'ln_60day_CASI_all',
-            'IoT_15day_CASI_finance': 'ln_15day_CASI_finance',
-            'IoT_30day_CASI_finance': 'ln_30day_CASI_finance',
-            'IoT_60day_CASI_finance': 'ln_60day_CASI_finance',
-            }
-
-    # Box-Cox power transform -> log(CASI)
-    for cik in df.index:
-        iprint("Computing log(CASI) for {}:{}".format(cik, firmname(cik)))
-        for iot_key in sorted(iot_dict.keys()):
-            CASI = df.loc[cik, iot_key]
-            df.loc[cik, iot_dict[iot_key]] = box_cox(CASI)
-
-
+    df = df[list(df.columns[:-14]) + iotkeys]
     df.to_csv("df.csv", dtype={"cik": object})
+
+
+    entities1 = attention_measures(df.index, 'all', event='1st_update')
+    entities2 = attention_measures(df.index, 'finance', event='1st_update')
+    entities3 = attention_measures(df.index, 'business_industrial', event='1st_update')
+
+    df = weighted_iot(df, window=15, weighting='equal')
+    df = weighted_iot(df, window=30, weighting='equal')
+    df = weighted_iot(df, window=60, weighting='equal')
+
+    df = df[list(df.columns[:-14]) + iotkeys]
+    df.to_csv("df_update.csv", dtype={"cik": object})
+
+
+def abnormal_svi(cik, category='all'):
+    fdir = os.path.join(BASEDIR, 'IoT/{}'.format(category), 'IoT_{}'.format(cik))
+
 
 
 
@@ -1083,7 +1061,6 @@ if __name__=='__main__':
 
     df = pd.read_csv('df.csv', dtype={'cik':object})
     df.set_index('cik', inplace=True)
-    # sample = df[~df.size_of_first_price_update.isnull()]
 
     # fulldf = pd.read_csv('full_df.csv', dtype={'cik': object})
     # fulldf.set_index('cik', inplace=True)
@@ -1099,6 +1076,7 @@ if __name__=='__main__':
     cikfb = '1326801' # Facebook
 
     ciks1 = ['1439404', '1418091', '1271024', '1500435', '1318605', '1594109', '1326801', '1564902']
-    iotkeys = ['gtrends_name', 'IoT_entity_type', 'IoT_15day_CASI_all', 'IoT_30day_CASI_all', 'IoT_60day_CASI_all', 'IoT_15day_CASI_finance', 'IoT_30day_CASI_finance', 'IoT_60day_CASI_finance']
+    iotkeys = ['gtrends_name', 'IoT_entity_type', 'IoT_15day_CASI_all', 'IoT_30day_CASI_all', 'IoT_60day_CASI_all', 'IoT_15day_CASI_finance', 'IoT_30day_CASI_finance', 'IoT_60day_CASI_finance', 'IoT_15day_CASI_business_industrial', 'IoT_30day_CASI_business_industrial', 'IoT_60day_CASI_business_industrial', 'IoT_15day_CASI_weighted_finance', 'IoT_30day_CASI_weighted_finance', 'IoT_60day_CASI_weighted_finance']
+    # Reorder IoT Keys
 
 

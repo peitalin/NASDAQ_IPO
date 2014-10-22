@@ -361,45 +361,81 @@ def descriptive_stats():
 
         # Correct Order
         kwkeys = [
-            'IoT_15day_CASI_all', 'ln_15day_CASI_all',
-            'IoT_30day_CASI_all', 'ln_30day_CASI_all',
-            'IoT_60day_CASI_all', 'ln_60day_CASI_all'
+            'IoT_15day_CASI_all', 'IoT_15day_CASI_weighted_finance',
+            'IoT_15day_CASI_finance', 'IoT_15day_CASI_business_industrial',
+            'IoT_30day_CASI_all', 'IoT_30day_CASI_weighted_finance',
+            'IoT_30day_CASI_finance', 'IoT_30day_CASI_business_industrial',
+            'IoT_60day_CASI_all', 'IoT_60day_CASI_weighted_finance',
+            'IoT_60day_CASI_finance', 'IoT_60day_CASI_business_industrial',
             ]
 
         sumstat_index = {
             'amends': {
-                'sheet': 'attention1',
+                'sheet': 'attention_amend',
                 'order': ['Up', 'None', 'Down'],
                 'rename': ['Up', 'None', 'Down']
-                },
+            },
             'offer_in_filing_price_range': {
-                'sheet': 'attention2',
+                'sheet': 'attention_revise',
                 'order': ['above','within','under'],
                 'rename': ['Above', 'Within', 'Under']
-                }
+            },
+            'underwriter_tier': {
+                'sheet': 'attention_uw',
+                'order': ['8.5+', '7+', '0+'],
+                'rename': ['8.5+', '7+', '0+']
+            },
+            'VC': {
+                'sheet': 'attention_vc',
+                'order': [1, 0],
+                'rename': ['VC', 'No VC']
+            },
+            'exchange': {
+                'sheet': 'attention_exchange',
+                'order': ['New York Stock Exchange','NASDAQ','American Stock Exchange'],
+                'rename': ['NYSE', 'NASDAQ', 'AMEX']
+            }
         }
 
-        gkey = 'amends'
-        # df = pd.read_csv("df.csv", dtype={'cik':object})
-        # gkey = 'offer_in_filing_price_range'; df = pd.read_csv("df_revision.csv", dtype={'cik':object})
-
-        attention = df[['underwriter_tier', gkey] + kwkeys]
-
         kwdict = {
-            'IoT_15day_CASI_all': "15 Day CASI (all)",
-            'IoT_30day_CASI_all': "30 Day CASI (all)",
-            'IoT_60day_CASI_all': "60 Day CASI (all)",
-            'ln_15day_CASI_all': "log(CASI) (15 day)",
-            'ln_30day_CASI_all': "log(CASI) (30 day)",
-            'ln_60day_CASI_all': "log(CASI) (60 day)",
+            'IoT_15day_CASI_all': "15 Day CASI (All)",
+            'IoT_30day_CASI_all': "30 Day CASI (All)",
+            'IoT_60day_CASI_all': "60 Day CASI (All)",
+            'IoT_15day_CASI_business_industrial': "15 Day CASI (Business)",
+            'IoT_30day_CASI_business_industrial': "30 Day CASI (Business)",
+            'IoT_60day_CASI_business_industrial': "60 Day CASI (Business)",
+            'IoT_15day_CASI_finance': "15 Day CASI (Finance)",
+            'IoT_30day_CASI_finance': "30 Day CASI (Finance)",
+            'IoT_60day_CASI_finance': "60 Day CASI (Finance)",
+            'IoT_15day_CASI_weighted_finance': "15 Day CASI (Weighted Finance)",
+            'IoT_30day_CASI_weighted_finance': "30 Day CASI (Weighted Finance)",
+            'IoT_60day_CASI_weighted_finance': "60 Day CASI (Weighted Finance)",
             }
+
+
+        # gkey = 'offer_in_filing_price_range'
+        # gkey = 'underwriter_tier'
+        # gkey = 'amends'
+        # gkey = 'VC'
+        gkey = 'exchange'
+
+        if gkey=='amends':
+            df = pd.read_csv("df_update.csv", dtype={'cik':object})
+        else:
+            df = pd.read_csv("df.csv", dtype={'cik':object})
+
+        attention = df[[gkey] + kwkeys]
+        if gkey=='underwriter_tier':
+            attention = attention[attention['underwriter_tier'] != '-1']
+        if gkey=='exchange':
+            attention['exchange'] = ['NASDAQ' if 'NASDAQ' in x else x for x in attention['exchange']]
 
         kwstats = {key:kwtest(key, gkey, df=attention) for key in kwkeys}
         l_stats = {key:l_test(key, gkey, df=attention) for key in kwkeys}
         f_stats = {key:f_test(key, gkey, df=attention) for key in kwkeys}
 
         Sheet(sumstat_index[gkey]['sheet']).activate()
-        Range("A3:T32").value = [['']*44]*44
+        Range("A2:T66").value = [['']*66]*66
         Range("C4").value = ['obs', 'mean', 'std', 'min', 'med', 'max', 'ANOVA']
         Range("L4").value = ['', 'mean', 'std', 'min', 'med', 'max', 'ANOVA']
 
