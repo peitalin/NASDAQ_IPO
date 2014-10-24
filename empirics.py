@@ -188,10 +188,10 @@ if __name__=='__main__':
 
 
     # CASI up to 1st update
-    dfu = pd.read_csv("df_update.csv", dtype={'cik':object})
+    dfu = pd.read_csv("DFU.csv", dtype={'cik':object})
     dfu.set_index("cik", inplace=1)
 
-
+    """
     dfu['NASDAQ'] = ['NASDAQ' in x for x in dfu['exchange']]
     dfu['log_firm_size'] = log(dfu['market_cap'])
     dfu['percent_final_price_revision'] *= 100
@@ -203,12 +203,14 @@ if __name__=='__main__':
     dfu['priceupdate_up'] *= 100
     dfu['close_return'] *= 100
     dfu['open_return'] *= 100
+    dfu['prange_change'] = [x if x==x else 0 for x in dfu['prange_change_first_price_update']]
+    """
 
     # CASI up to final price revision
-    df = pd.read_csv("df.csv", dtype={'cik':object})
+    df = pd.read_csv("DF.csv", dtype={'cik':object})
     df.set_index("cik", inplace=1)
 
-
+    """
     df['NASDAQ'] = ['NASDAQ' in x for x in df['exchange']]
     df['log_firm_size'] = log(df['market_cap'])
     df['percent_final_price_revision'] *= 100
@@ -220,6 +222,10 @@ if __name__=='__main__':
     df['priceupdate_up'] *= 100
     df['close_return'] *= 100
     df['open_return'] *= 100
+    df['prange_change'] = [x if x==x else 0 for x in df['prange_change_first_price_update']]
+    df['pct_final_revision_up'] = [x if x > 0 else 0 for x in df['percent_final_price_revision']]
+    df['pct_final_revision_down'] = [x if x < 0 else 0 for x in df['percent_final_price_revision']]
+    """
 
 
 
@@ -227,6 +233,10 @@ if __name__=='__main__':
     controls = [
              'priceupdate_down',
              'priceupdate_up',
+             'prange_change',
+             'log(days_s1_to_listing)',
+             # 'days_first_price_change',
+             # 'underwriter_collective_rank',
              'underwriter_rank_avg',
              'VC',
              'confidential_IPO',
@@ -239,66 +249,47 @@ if __name__=='__main__':
              'M3_indust_rets',
              # 'M3_IPO_volume', # <- multicollinearity issuers with indust rets
              'M3_initial_returns',
+             # 'IoT_30day_CASI_weighted_finance',
+             # 'IoT_60day_CASI_weighted_finance',
          ]
-
 
 
     IOTKEY = 'IoT_15day_CASI_weighted_finance'
     INTERACT = [
                 '{} * {}'.format(IOTKEY,'priceupdate_up'),
                 '{} * {}'.format(IOTKEY,'priceupdate_down'),
-                '{} * {}'.format(IOTKEY,'log_firm_size'),
+                # '{} * {}'.format(IOTKEY,'log(days_s1_to_listing)'),
                 ]
     Y = 'percent_final_price_revision'
     X = " + ".join(controls + [IOTKEY] + INTERACT)
 
-    results = smf.ols(Y + ' ~ ' + X, data=df).fit()
-    results.summary()
+    lm = smf.ols(Y + ' ~ ' + X, data=df).fit()
+    lm.summary()
+
+    smf.rlm(Y + ' ~ ' + X, data=df).fit().summary()
+
+    """
+    as expected, 15day CASI has larger coefficients than 30 and 60 day CASI.
+    CASI is robust across various model specifications, and has incremental explanatory power of price updates, which are noted to vary almost 1 to 1 with final price revisions.
+
+    # Model results are sensitive to addition of log_firm_size, although CASI remains economically significant.
+
+    Multicollinearity ??
+    df[controls + iotkeys].corr()
+    """
 
 
-    # as expected, 15day CASI has larger coefficients than 30 and 60 day CASI.
-    # CASI is robust across various model specifications, and has incremental explanatory power of price updates, which are noted to vary almost 1 to 1 with final price revisions.
 
-    ## Model  results are sensitive to addition of log_firm_size, although CASI remains economically significant
-
-    # Multicollinearity ??
-    # df[controls + iotkeys].corr()
-
-
-    # Price update regression
+    ###############################################
+    # Initial Returns regression
+    # Interaction: CASI * Price updates
     controls = [
-             'underwriter_rank_avg',
-             'VC', 'confidential_IPO', 'NASDAQ',
-             'share_overhang',
-             'log_proceeds',
-             'log_firm_size',
-             'liab_over_assets',
-             'EPS',
-             'M3_indust_rets',
-             # 'M3_IPO_volume', # <- multicollinearity issuers with indust rets
-             'M3_initial_returns',
-         ]
-
-
-    IOTKEY = 'IoT_15day_CASI_weighted_finance'
-    INTERACT = [
-                '{} * {}'.format(IOTKEY,'M3_IPO_volume')
-                ]
-    Y = 'percent_first_price_update'
-    X = " + ".join(controls + [IOTKEY] + INTERACT)
-
-    results = smf.ols(Y + ' ~ ' + X, data=dfu).fit()
-    results.summary()
-
-
-
-
-
-
-    # Price revision regression
-    controls = [
-             # 'priceupdate_down',
-             # 'priceupdate_up',
+             'priceupdate_down',
+             'priceupdate_up',
+             'prange_change',
+             'log(days_s1_to_listing)',
+             'days_first_price_change',
+             # 'underwriter_collective_rank',
              'underwriter_rank_avg',
              'VC',
              'confidential_IPO',
@@ -306,37 +297,135 @@ if __name__=='__main__':
              'share_overhang',
              'log_proceeds',
              'log_firm_size',
-             'liab_over_assets',
+             # 'liab_over_assets',
              'EPS',
              'M3_indust_rets',
              # 'M3_IPO_volume', # <- multicollinearity issuers with indust rets
              'M3_initial_returns',
+             # 'IoT_30day_CASI_weighted_finance',
+             # 'IoT_60day_CASI_weighted_finance',
          ]
-
-
     IOTKEY = 'IoT_15day_CASI_weighted_finance'
     INTERACT = [
-                # '{} * {}'.format(IOTKEY,'percent_final_price_revision'),
                 '{} * {}'.format(IOTKEY,'priceupdate_down'),
                 '{} * {}'.format(IOTKEY,'priceupdate_up'),
-                # '{} * {}'.format(IOTKEY,'confidential_IPO'),
+
                 ]
     Y = 'close_return'
+    # Y = 'open_return'
     X = " + ".join(controls + [IOTKEY] + INTERACT)
 
     results = smf.ols(Y + ' ~ ' + X, data=df).fit()
     results.summary()
 
+    ##############################################
+    # Initial Returns regression
+    # Interaction: CASI * Final_price_revision
+    controls = [
+             # 'priceupdate_down',
+             # 'priceupdate_up',
+             'prange_change',
+             # 'log(days_s1_to_listing)',
+             'days_first_price_change',
+             # 'underwriter_collective_rank',
+             'underwriter_rank_avg',
+             'VC',
+             'confidential_IPO',
+             # 'NASDAQ',
+             'share_overhang',
+             'log_proceeds',
+             'log_firm_size',
+             # 'liab_over_assets',
+             'EPS',
+             'M3_indust_rets',
+             # 'M3_IPO_volume', # <- multicollinearity issuers with indust rets
+             'M3_initial_returns',
+             # 'IoT_30day_CASI_weighted_finance',
+             # 'IoT_60day_CASI_weighted_finance',
+         ]
 
-
-
-
-    IOTKEY = 'IoT_15day_CASI_weighted_finance'
+    IOTKEY = 'IoT_30day_CASI_weighted_finance'
     INTERACT = [
                 '{} * {}'.format(IOTKEY,'percent_final_price_revision'),
                 ]
     Y = 'close_return'
+    # Y = 'open_return'
     X = " + ".join(controls + [IOTKEY] + INTERACT)
 
     results = smf.ols(Y + ' ~ ' + X, data=df).fit()
     results.summary()
+
+    # smf.rlm(Y + ' ~ ' + X, data=df).fit().summary()
+
+    """
+     In every case, the statistical significance of CASI itself is driven out by the interaction term between CASI and change in offer price.
+     The results remain the same whether initial returns is defined as open_returns (Aggarwal et al. 2002) or close_returns (Lowry and Schwert, 2004).
+    """
+
+
+    ## Regularization - LASSO and Ridge regression
+    import patsy
+    y, x = patsy.dmatrices(Y + " ~ " + X, data=df)
+    from sklearn import linear_model
+
+    ridge = linear_model.Ridge(alpha=0.5)
+    ridge.fit(x,y)
+    list(zip(['intercept']+X.split('+'), ridge.coef_[0]))
+
+
+    lasso = linear_model.Lasso(alpha=0.5)
+    lasso.fit(x,y)
+    list(zip(['intercept']+X.split('+'), lasso.coef_))
+
+    """ LASSO Coefs as a function of regularization
+    alphas = np.linspace(0,2,100)
+    coefs = []
+    for a in alphas:
+        lasso.set_params(alpha=a)
+        lasso.fit(x,y)
+        coefs.append(lasso.coef_)
+
+    ax = plt.gca()
+    ax.set_color_cycle(['b', 'r', 'g', 'c', 'k', 'y', 'm'])
+
+    ax.plot(alphas, coefs)
+    ax.set_xscale('log')
+    ax.set_xlim(ax.get_xlim()[::-1])  # reverse axis
+    plt.xlabel('alpha')
+    plt.ylabel('weights')
+    plt.title('Ridge coefficients as a function of the regularization')
+    plt.axis('tight')
+    plt.show()
+    """
+
+
+
+    # # Price update regression
+    # controls = [
+    #          'underwriter_rank_avg',
+    #          'VC', 'confidential_IPO', 'NASDAQ',
+    #          'share_overhang',
+    #          'log_proceeds',
+    #          'log_firm_size',
+    #          'liab_over_assets',
+    #          'EPS',
+    #          'M3_indust_rets',
+    #          # 'M3_IPO_volume', # <- multicollinearity issuers with indust rets
+    #          'M3_initial_returns',
+    #      ]
+
+
+    # IOTKEY = 'IoT_15day_CASI_weighted_finance'
+    # INTERACT = [
+    #             # '{} * {}'.format(IOTKEY,'M3_IPO_volume')
+    #             ]
+    # Y = 'percent_first_price_update'
+    # X = " + ".join(controls + [IOTKEY] + INTERACT)
+
+    # results = smf.ols(Y + ' ~ ' + X, data=dfu).fit()
+    # results.summary()
+
+
+
+
+
