@@ -74,6 +74,9 @@ if '__tools__':
         print("="*90+'\n')
         # '1467858' -> GM
 
+    def create_dataframe(category, ciks=sorted(FINALJSON.keys())):
+        return pd.DataFrame([FINALJSON[cik][category] for cik in ciks], ciks)
+
 
 
 # None of these functions return a DF, they modify existing df.
@@ -107,6 +110,10 @@ def df_filings(FINALJSON=FINALJSON):
     def is_cash(string):
         return isinstance(as_cash(string), float)
 
+
+    ciks = sorted(FINALJSON.keys())
+    ###########
+    print('Creating a new dataframe...')
     float_columns = ['days_to_first_price_update',
                     'days_to_final_price_revision',
                     'days_from_priced_to_listing',
@@ -116,22 +123,17 @@ def df_filings(FINALJSON=FINALJSON):
                     'percent_final_price_revision',
                     'prange_change_first_price_update',
                     'number_of_price_updates']
-
-    ciks = sorted(FINALJSON.keys())
-
-    company     = pd.DataFrame([FINALJSON[cik]['Company Overview']  for cik in ciks], ciks)
-    financials  = pd.DataFrame([FINALJSON[cik]['Financials']        for cik in ciks], ciks)
-    experts     = pd.DataFrame([FINALJSON[cik]['Experts']           for cik in ciks], ciks)
-    metadata    = pd.DataFrame([FINALJSON[cik]['Metadata']          for cik in ciks], ciks)
-    filings     = pd.DataFrame([FINALJSON[cik]['Filing']            for cik in ciks], ciks)
-    open_prices = pd.DataFrame([FINALJSON[cik]['Opening Prices']    for cik in ciks], ciks)
-
-    ###########
-    df = pd.DataFrame([[0]*len(float_columns)]*len(filings),
-                    filings.index,
-                    columns=float_columns)
-    print('Calculating dates and price updates...')
+    df = pd.DataFrame([[0]*len(float_columns)]*len(ciks), ciks, columns=float_columns)
     ##########
+
+
+    company     = create_dataframe('Company Overview')
+    financials  = create_dataframe('Financials')
+    experts     = create_dataframe('Experts')
+    metadata    = create_dataframe('Metadata')
+    filings     = create_dataframe('Filing')
+    open_prices = create_dataframe('Opening Prices')
+
 
     RW, MISSING, ABNORMAL = [], [], set()
     badciks = {     # long durations
@@ -271,7 +273,6 @@ def df_filings(FINALJSON=FINALJSON):
     df['Year'] = [int(2000)]*len(df)
     for cik in df.index:
         df.loc[cik, 'Year'] = aget(FINALJSON[cik]['Company Overview']['Status']).year
-    df[float_columns] = df[float_columns].astype(float)
 
     ###############
     df['cik'] = df.index
@@ -285,18 +286,20 @@ if '__control_varialbes___':
     def order_df(df):
         "Corrects dtypes and reorders keys in dataframe"
 
-        ipo_cycle_keys = [k for k in df.keys() if k[0].isdigit()]
+        ipo_cycle_keys = [k for k in df.keys() if k[1].isdigit()]
+        iot_keys = [k for k in df if re.search(r'IoT_\d', k)]
         cols = [
             'days_to_first_price_update',
             'days_to_final_price_revision',
             'days_from_priced_to_listing',
+            'days_from_s1_to_listing',
             'size_of_first_price_update',
             'size_of_final_price_revision',
             'percent_first_price_update',
             'percent_final_price_revision',
             'pct_first_price_change',
             'days_first_price_change',
-            'prange_change_first_price_update',
+            'prange_change_first_price_update', 'prange_change',
             'number_of_price_updates',
             'offer_in_filing_price_range',
             'Coname', 'Year',
@@ -309,15 +312,15 @@ if '__control_varialbes___':
             'underwriter_rank_single', 'underwriter_rank_avg', 'underwriter_rank_med',
             'underwriter_num_leads', 'underwriter_collective_rank', 'underwriter_tier',
             'share_overhang', 'shares_offered', 'total_dual_class_shares',
-            'log_proceeds', 'market_cap', 'liab/assets', 'P/E', 'P/sales', 'EPS',
+            'log_proceeds', 'log_firm_size', 'market_cap', 'liab_over_assets', 'P/E', 'P/sales', 'EPS',
             'priceupdate_down', 'priceupdate_up'
-            ] + ipo_cycle_keys
+            ] + ipo_cycle_keys + iot_keys
+
         missed_cols = sorted(set(df.keys()) - set(cols))
 
 
-
-        col_float = ['days_to_final_price_revision', 'days_from_priced_to_listing', 'days_first_price_change', 'size_of_first_price_update', 'size_of_final_price_revision', 'percent_first_price_update', 'percent_final_price_revision','days_to_first_price_update', 'pct_first_price_change', 'prange_change_first_price_update', 'Offer Price', 'Open', 'Close', 'High', 'Low', 'Volume', 'open_return', 'close_return',  'BAA_yield_changes', 'underwriter_rank_single', 'underwriter_rank_avg', 'underwriter_rank_med', 'underwriter_collective_rank', 'share_overhang', 'shares_offered', 'log_proceeds', 'market_cap', 'liab/assets', 'P/E', 'P/sales', 'EPS', 'priceupdate_down', 'priceupdate_up', 'number_of_price_updates',  'total_dual_class_shares'
-            ] + ipo_cycle_keys
+        col_float = ['days_to_final_price_revision', 'days_from_priced_to_listing', 'days_from_s1_to_listing', 'days_first_price_change', 'size_of_first_price_update', 'size_of_final_price_revision', 'percent_first_price_update', 'percent_final_price_revision','days_to_first_price_update', 'pct_first_price_change', 'prange_change_first_price_update', 'Offer Price', 'Open', 'Close', 'High', 'Low', 'Volume', 'open_return', 'close_return',  'BAA_yield_changes', 'underwriter_rank_single', 'underwriter_rank_avg', 'underwriter_rank_med', 'underwriter_collective_rank', 'share_overhang', 'shares_offered', 'log_proceeds', 'log_firm_size', 'market_cap', 'liab_over_assets', 'P/E', 'P/sales', 'EPS', 'priceupdate_down', 'priceupdate_up', 'number_of_price_updates',  'total_dual_class_shares'
+            ] + ipo_cycle_keys + iot_keys
         col_int = ['Year', 'confidential_IPO', 'underwriter_num_leads', 'foreign', 'VC']
         col_obj = ['offer_in_filing_price_range', 'Coname', 'date_1st_pricing', 'date_last_pricing', 'date_424b', 'date_trading', 'date_s1_filing', 'Date', 'SIC', 'FF49_industry', 'underwriter_tier', 'exchange', 'amends',
             ]
@@ -593,10 +596,10 @@ if '__control_varialbes___':
             pass
 
         df['BAA_yield_changes'] = BAA_yield_spread(filing_dates)
-        df['{n}month_indust_rets'.format(n=lag)] = FF_industry_returns(filing_dates, lag)
-        df['{n}month_IPO_volume'.format(n=lag)], \
-        df['{n}month_initial_returns'.format(n=lag)], \
-        df['{n}month_pct_above_midpoint'.format(n=lag)] = IPO_market_trends(filing_dates, lag)
+        df['M{n}_indust_rets'.format(n=lag)] = FF_industry_returns(filing_dates, lag)
+        df['M{n}_IPO_volume'.format(n=lag)], \
+        df['M{n}_initial_returns'.format(n=lag)], \
+        df['M{n}_pct_above_midpoint'.format(n=lag)] = IPO_market_trends(filing_dates, lag)
 
         return df
 
@@ -694,23 +697,22 @@ if '__control_varialbes___':
             revenue = as_cash(FJ['Financials']['Revenue'])
             liabil = as_cash(FJ['Financials']['Total Liabilities'])
             assets = as_cash(FJ['Financials']['Total Assets'])
-            share_price = as_cash(FJ['Company Overview']['Share Price'])
             num_shares = df.loc[cik, 'total_dual_class_shares']
 
             if num_shares != ' -- ' and num_shares != None:
                 num_shares = float(num_shares)
-                market_cap = num_shares * share_price
+                market_cap = num_shares * midpoint_initial_pr
             else:
                 num_shares = None
                 market_cap = None
 
             df.loc[cik, 'market_cap']   = market_cap
             df.loc[cik, 'log_proceeds'] = np.log(proceeds) if proceeds else None
-            df.loc[cik, 'liab/assets'] = liabil/assets if liabil and assets else None
+            df.loc[cik, 'liab_over_assets'] = liabil/assets if liabil and assets else None
             df.loc[cik, 'P/E'] = market_cap/net_income if net_income and market_cap else None
             df.loc[cik, 'P/sales'] = market_cap/revenue if revenue and market_cap else None
             df.loc[cik, 'EPS'] = net_income/num_shares if net_income and num_shares else None
-            float_cols = ['liab/assets', 'P/E', 'P/sales', 'EPS']
+            float_cols = ['liab_over_assets', 'P/E', 'P/sales', 'EPS']
             df[float_cols] = df[float_cols].astype(float)
 
         return df
@@ -735,12 +737,14 @@ if '__control_varialbes___':
         for cik in df.index:
             iprint("Getting amends info for {}: {}".format(cik, firmname(cik)))
             p_update = df.loc[cik, 'size_of_first_price_update']
-            if p_update != p_update or p_update == 0:
-                df.loc[cik, 'amends'] = "None"
+            if p_update == 0:
+                df.loc[cik, 'amends'] = "Same"
             elif p_update < 0:
                 df.loc[cik, 'amends'] = "Down"
             elif p_update > 0:
                 df.loc[cik, 'amends'] = "Up"
+            elif p_update != p_update:
+                df.loc[cik, 'amends'] = "None"
 
         return df
 
@@ -761,7 +765,7 @@ def from_FINALJSON_to_df():
     df['close_return'] = (df['Close'] - df['Offer Price']) / df['Offer Price']
     df["SIC"] = metadata["SIC"]
     df['Coname'] = company['Company Name']
-
+    df['days_from_s1_to_listing'] = [(aget(d2)-aget(d1)).days for d1,d2 in zip(df.date_s1_filing, df.date_424b)]
 
     ########
     df = underwriter_ranks(df)
@@ -790,7 +794,7 @@ def attention_measures(ciks, category, event='final', makedir=False):
 
     from pandas.stats.moments import rolling_median, rolling_sum
     QDIR = os.path.join(os.path.expanduser('~'), 'Dropbox', 'gtrends-beta', 'cik-ipo', 'query_counts')
-    QWEIGHTS = {'missing':-1, 'weekly': 0, 'daily': 1}
+    QWEIGHTS = {'missing':0, 'weekly': 0.5, 'daily': 1}
     CATEGORYID = {'all': '0', 'finance': '0-7', 'business_industrial': '0-12'}
     EVENT = {'final': 'final-price-revision', 'listing': 'listing-date', '1st_update': '1st-price-update'}
 
@@ -921,9 +925,10 @@ def weighted_iot(df, window=15, weighting='equal'):
     else:
         wa, wf, wb = [1/3, 1/3, 1/3]
 
-    df['IoT_{}day_CASI_weighted_finance'.format(w)] = wa * df['IoT_{}day_CASI_all'.format(w)] + \
-                                                wf * df['IoT_{}day_CASI_finance'.format(w)] + \
-                                                wb * df['IoT_{}day_CASI_business_industrial'.format(w)]
+    df['IoT_{}day_CASI_weighted_finance'.format(w)] = \
+        wa * df['IoT_{}day_CASI_all'.format(w)] + \
+        wf * df['IoT_{}day_CASI_finance'.format(w)] + \
+        wb * df['IoT_{}day_CASI_business_industrial'.format(w)]
     return df
 
 
@@ -1015,7 +1020,9 @@ def plot_iot(cik, category=''):
 def process_IOT_variables():
 
     entities1 = attention_measures(df.index, 'all', event='final')
+    print(1)
     entities2 = attention_measures(df.index, 'finance', event='final')
+    print(1)
     entities3 = attention_measures(df.index, 'business_industrial', event='final')
 
     df = weighted_iot(df, window=15, weighting='equal')
@@ -1038,34 +1045,83 @@ def process_IOT_variables():
     df.to_csv("df_update.csv", dtype={"cik": object})
 
 
-def abnormal_svi(cik, category='all'):
-    fdir = os.path.join(BASEDIR, 'IoT/{}'.format(category), 'IoT_{}'.format(cik))
 
 
+def abnormal_svi(df, window=15, category='all'):
+
+    def get_mid_date(cik, event='final'):
+        "Args: event: ['final', '1st_update', 'listing'] "
+        firm = df.loc[cik]
+        start_date = aget(firm['date_1st_pricing'])
+        trade_date = aget(firm['date_trading'])
+        if event=='final':
+            if not np.isnan(firm['days_to_final_price_revision']):
+                end_date = start_date.replace(days=firm['days_to_final_price_revision'])
+            else:
+                end_date = trade_date
+        elif event!='listing':
+            if firm['days_to_first_price_update'] < firm['days_to_final_price_revision']:
+                end_date = start_date.replace(days=firm['days_to_first_price_update'])
+            elif not np.isnan(firm['days_to_final_price_revision']):
+                end_date = start_date.replace(days=firm['days_to_final_price_revision'])
+            else:
+                end_date = aget(firm['date_trading'])
+        return end_date
+
+    if os.path.exists("IoT/ASVI_{}day_{}.csv".format(window, category)):
+        ASVI = pd.read_csv("IoT/ASVI_{}day_{}.csv".format(window, category), dtype={'cik': object}).set_index('cik')
+        return ASVI
+
+    w = window
+    columns = ['t-{}'.format(d) for d in range(w+1)][::-1] + ['t+{}'.format(d) for d in range(1, w+1)]
+    ASVI = []
+
+    for cik in df.index:
+        iprint("Getting ASVI => {}:{}".format(cik, firmname(cik)))
+        fdir = os.path.join(BASEDIR, 'IoT/{}'.format(category), 'IoT_{}.csv'.format(cik))
+        iot = pd.read_csv(fdir, parse_dates=[0], date_parser=aget)
+        iot.set_index("Date", inplace=1)
+        mid_date = get_mid_date(cik, event='final')
+        drange = arrow.Arrow.range('day', mid_date.replace(days=-w), mid_date.replace(days=w))
+        ASVI.append(list(iot.loc[drange, '{}day_CASI'.format(w)]))
+
+    ASVI = pd.DataFrame(ASVI, index=df.index, columns=columns)
+    ASVI.to_csv('IoT/ASVI_{}day_{}.csv'.format(window, category), dtype={'cik':object})
+    return ASVI
+
+    """
+    if category='weighted_finance':
+        ASVI15_ = (abnormal_svi(df, window=15, category='all') +
+                  abnormal_svi(df, window=15, category='business_industrial') +
+                  abnormal_svi(df, window=15, category='finance')) / 3
+        ASVI30_ = (abnormal_svi(df, window=30, category='all') +
+                  abnormal_svi(df, window=30, category='business_industrial') +
+                  abnormal_svi(df, window=30, category='finance')) / 3
+        ASVI60_ = (abnormal_svi(df, window=60, category='all') +
+                  abnormal_svi(df, window=60, category='business_industrial') +
+                  abnormal_svi(df, window=60, category='finance')) / 3
+    """
 
 
 
 if __name__=='__main__':
 
-    # FINALJSON = json.loads(open('final_json.txt').read())
-    # FINALJSON = FULLJSON
-    ciks = sorted(FINALJSON.keys())
-
-    company     = pd.DataFrame([FINALJSON[cik]['Company Overview']  for cik in ciks], ciks)
-    financials  = pd.DataFrame([FINALJSON[cik]['Financials']        for cik in ciks], ciks)
-    experts     = pd.DataFrame([FINALJSON[cik]['Experts']           for cik in ciks], ciks)
-    metadata    = pd.DataFrame([FINALJSON[cik]['Metadata']          for cik in ciks], ciks)
-    filings     = pd.DataFrame([FINALJSON[cik]['Filing']            for cik in ciks], ciks)
-    open_prices = pd.DataFrame([FINALJSON[cik]['Opening Prices']    for cik in ciks], ciks)
+    company     = create_dataframe('Company Overview')
+    financials  = create_dataframe('Financials')
+    experts     = create_dataframe('Experts')
+    metadata    = create_dataframe('Metadata')
+    filings     = create_dataframe('Filing')
+    open_prices = create_dataframe('Opening Prices')
 
 
     df = pd.read_csv('df.csv', dtype={'cik':object})
     df.set_index('cik', inplace=True)
-
     # fulldf = pd.read_csv('full_df.csv', dtype={'cik': object})
     # fulldf.set_index('cik', inplace=True)
+    dfu = pd.read_csv('df_update.csv', dtype={'cik':object})
+    dfu.set_index('cik', inplace=1)
 
-
+    ciks = sorted(FINALJSON.keys())
     cik = '1439404' # Zynga         # 8.6
     cik = '1418091' # Twitter       # 7.4
     cik = '1271024' # LinkedIn      # 9.6
@@ -1074,9 +1130,13 @@ if __name__=='__main__':
     cik = '1326801' # Facebook      # 8.65
     cik = '1564902' # SeaWorld      # 9.54
     cikfb = '1326801' # Facebook
-
     ciks1 = ['1439404', '1418091', '1271024', '1500435', '1318605', '1594109', '1326801', '1564902']
-    iotkeys = ['gtrends_name', 'IoT_entity_type', 'IoT_15day_CASI_all', 'IoT_30day_CASI_all', 'IoT_60day_CASI_all', 'IoT_15day_CASI_finance', 'IoT_30day_CASI_finance', 'IoT_60day_CASI_finance', 'IoT_15day_CASI_business_industrial', 'IoT_30day_CASI_business_industrial', 'IoT_60day_CASI_business_industrial', 'IoT_15day_CASI_weighted_finance', 'IoT_30day_CASI_weighted_finance', 'IoT_60day_CASI_weighted_finance']
-    # Reorder IoT Keys
+    iotkeys = ['gtrends_name', 'IoT_entity_type',
+    'IoT_15day_CASI_all', 'IoT_30day_CASI_all', 'IoT_60day_CASI_all',
+    'IoT_15day_CASI_finance', 'IoT_30day_CASI_finance', 'IoT_60day_CASI_finance',
+    'IoT_15day_CASI_business_industrial','IoT_30day_CASI_business_industrial',
+    'IoT_60day_CASI_business_industrial','IoT_15day_CASI_weighted_finance',
+    'IoT_30day_CASI_weighted_finance', 'IoT_60day_CASI_weighted_finance']
+
 
 
