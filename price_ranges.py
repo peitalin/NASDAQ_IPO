@@ -67,7 +67,7 @@ def parse_table(html):
     # negative search
     earnings = re.compile(r'[Ee]arnings')
     warrants = re.compile(r'[Ww]arrant')
-    balance_sheet_headers = ['cash', 'deferred', 'tax', 'assets', 'depreciation', 'net income', 'liabilities']
+    balance_sheet_headers = ['cash', 'deferred', 'tax', 'assets', 'depreciation', 'net income', 'liabilities', 'long term debt', 'shareholder']
 
 
     # Look at first 5 efx_unidentified_tables with: <div>, <table>, <center> elems
@@ -306,6 +306,30 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
 
     ciks = sorted(list(set(FINALJSON.keys())))
 
+    ciks = [
+    '1004724',
+    '1004724',
+    '1007019',
+    '1087294',
+    '1158863',
+    '1174266',
+    '1287151',
+    '1323648',
+    '1325702',
+    '1328208',
+    '1329365',
+    '1339729',
+    '1344376',
+    '1362614',
+    '1366340',
+    '1411342',
+    '1423242',
+    '1442620',
+    '1451951',
+    '1453820',
+    '1488039',
+    '1489077',]
+
     for i, cik in enumerate(ciks):
         if cik in done_ciks:
             continue
@@ -437,6 +461,7 @@ if __name__=='__main__':
     cik = '1175685' # Bladelogic
     cik = '1500435' # GoPro
     cik = '1271024' # LinkedIn
+    cik = '1276187' # Energy transfer equity
 
     ciks = sorted(FINALJSON.keys())
 
@@ -452,7 +477,8 @@ if __name__=='__main__':
 
     # ciks = list(inc.keys())
 
-    cik = '1420850'
+    cik = '1276187' # Energy transfer equity
+    cik = '1004724' # ADCARE HEALTH SYSTEMS,
     print("{}:{}".format(cik, firmname(cik)))
     tf = testfiles(cik)
     price_range = [get_price_range(f) for f in testfiles(cik)]
