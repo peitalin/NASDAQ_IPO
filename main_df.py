@@ -60,7 +60,7 @@ if '__tools__':
 
         filings = FINALJSON[cik]['Filing']
 
-        print("\n{A}> Filing Price Range: {B}: {C} <{A}".format(A='='*22, B=firmname(cik), C=cik))
+        print("\n{A}> Filing Price Range: {B}: {C} <{A}".format(A='='*25, B=firmname(cik), C=cik)[:91])
         print("Date\t\tFormtype\tFile\t\t\t\tPrice Range")
         for v in filings:
             filing_ashx = v[-2]
@@ -72,6 +72,7 @@ if '__tools__':
             else:
                 print("{}\t{}\t\t{}\t{}".format(v[2], v[1], v[3], v[-1]))
         print("="*90+'\n')
+
         # '1467858' -> GM
 
     def create_dataframe(category, ciks=sorted(FINALJSON.keys())):
@@ -93,6 +94,22 @@ def df_filings(FINALJSON=FINALJSON):
             percent_price_change = diff_prices / prices[0]
             return diff_dates, diff_prices, percent_price_change, diff_prange
         return [None, None, None, None]
+
+
+    # def first_prange_change(dates, prices, pranges):
+    #     for i, p in enumerate(pranges[:-1]):
+    #         if p == prange[0]:
+    #             continue
+    #         diff_prange = (pranges[i] - pranges[0])
+    #         diff_dates  = (dates[i] - dates[0]).days
+    #         return diff_prange, diff_dates
+    #     return [None, None]
+
+    def num_price_updates_up(prices):
+        return 'not implemented'
+
+    def num_price_updates_down(prices):
+        return 'not implemented'
 
     def num_price_updates(prices):
         return len([x for x,y in zip(prices, prices[1:]) if x!=y])
@@ -221,6 +238,7 @@ def df_filings(FINALJSON=FINALJSON):
                 days_to_first_price_update = None
                 size_of_first_price_update = None
                 percent_first_price_update = None
+                # prange_change_first_price_update =
             else:
                 days_to_first_price_update, \
                 size_of_first_price_update, \
@@ -250,10 +268,10 @@ def df_filings(FINALJSON=FINALJSON):
         df.loc[cik, 'percent_final_price_revision'] = percent_final_price_revision
 
         pct_first_price_change = percent_first_price_update if percent_first_price_update else percent_final_price_revision
-        days_first_price_change = days_to_first_price_update if days_to_first_price_update else days_to_final_price_revision
+        days_to_first_price_change = days_to_first_price_update if days_to_first_price_update else days_to_final_price_revision
 
         df.loc[cik, 'pct_first_price_change'] = pct_first_price_change
-        df.loc[cik, 'days_first_price_change'] = days_first_price_change
+        df.loc[cik, 'days_to_first_price_change'] = days_to_first_price_change
         df.loc[cik, 'days_from_priced_to_listing'] = (trade_date - dates[0]).days
         df.loc[cik, 'offer_in_filing_price_range'] = offer_in_filing_price_range
         df.loc[cik, 'prange_change_first_price_update'] = prange_change_first_price_update
@@ -282,7 +300,7 @@ def df_filings(FINALJSON=FINALJSON):
 
 
 
-if '__control_varialbes___':
+if '__control_variables___':
     def order_df(df):
         "Corrects dtypes and reorders keys in dataframe"
 
@@ -298,8 +316,9 @@ if '__control_varialbes___':
             'percent_first_price_update',
             'percent_final_price_revision',
             'pct_first_price_change',
-            'days_first_price_change',
-            'prange_change_first_price_update', 'prange_change',
+            'days_to_first_price_change',
+            'prange_change_first_price_update', 'prange_change_plus',
+            'delay_in_price_update',
             'number_of_price_updates',
             'offer_in_filing_price_range',
             'Coname', 'Year',
@@ -312,14 +331,29 @@ if '__control_varialbes___':
             'underwriter_rank_single', 'underwriter_rank_avg', 'underwriter_rank_med',
             'underwriter_num_leads', 'underwriter_collective_rank', 'underwriter_tier',
             'share_overhang', 'shares_offered', 'total_dual_class_shares',
-            'log_proceeds', 'log_firm_size', 'market_cap', 'liab_over_assets', 'P/E', 'P/sales', 'EPS',
+            'proceeds', 'market_cap', 'liab_over_assets',
+            'price_to_earnings', 'price_to_sales', 'EPS', 'sales',
             'priceupdate_down', 'priceupdate_up'
             ] + ipo_cycle_keys + iot_keys
 
         missed_cols = sorted(set(df.keys()) - set(cols))
 
 
-        col_float = ['days_to_final_price_revision', 'days_from_priced_to_listing', 'days_from_s1_to_listing', 'days_first_price_change', 'size_of_first_price_update', 'size_of_final_price_revision', 'percent_first_price_update', 'percent_final_price_revision','days_to_first_price_update', 'pct_first_price_change', 'prange_change_first_price_update', 'Offer Price', 'Open', 'Close', 'High', 'Low', 'Volume', 'open_return', 'close_return',  'BAA_yield_changes', 'underwriter_rank_single', 'underwriter_rank_avg', 'underwriter_rank_med', 'underwriter_collective_rank', 'share_overhang', 'shares_offered', 'log_proceeds', 'log_firm_size', 'market_cap', 'liab_over_assets', 'P/E', 'P/sales', 'EPS', 'priceupdate_down', 'priceupdate_up', 'number_of_price_updates',  'total_dual_class_shares'
+        col_float = [
+            'days_to_final_price_revision', 'days_from_priced_to_listing',
+            'days_from_s1_to_listing', 'days_to_first_price_change',
+            'days_to_first_price_update', 'delay_in_price_update',
+            'size_of_first_price_update', 'size_of_final_price_revision',
+            'percent_first_price_update', 'percent_final_price_revision',
+            'pct_first_price_change', 'prange_change_first_price_update',
+            'Offer Price', 'Open', 'Close', 'High', 'Low', 'Volume',
+            'open_return', 'close_return',  'BAA_yield_changes',
+            'underwriter_rank_single', 'underwriter_rank_avg', 'underwriter_rank_med',
+            'underwriter_collective_rank', 'share_overhang', 'shares_offered',
+            'proceeds', 'market_cap', 'liab_over_assets',
+            'price_to_earnings', 'price_to_sales', 'EPS', 'sales',
+            'priceupdate_down', 'priceupdate_up',
+            'number_of_price_updates',  'total_dual_class_shares'
             ] + ipo_cycle_keys + iot_keys
         col_int = ['Year', 'confidential_IPO', 'underwriter_num_leads', 'foreign', 'VC']
         col_obj = ['offer_in_filing_price_range', 'Coname', 'date_1st_pricing', 'date_last_pricing', 'date_424b', 'date_trading', 'date_s1_filing', 'Date', 'SIC', 'FF49_industry', 'underwriter_tier', 'exchange', 'amends',
@@ -707,12 +741,13 @@ if '__control_varialbes___':
                 market_cap = None
 
             df.loc[cik, 'market_cap']   = market_cap
-            df.loc[cik, 'log_proceeds'] = np.log(proceeds) if proceeds else None
-            df.loc[cik, 'liab_over_assets'] = liabil/assets if liabil and assets else None
-            df.loc[cik, 'P/E'] = market_cap/net_income if net_income and market_cap else None
-            df.loc[cik, 'P/sales'] = market_cap/revenue if revenue and market_cap else None
-            df.loc[cik, 'EPS'] = net_income/num_shares if net_income and num_shares else None
-            float_cols = ['liab_over_assets', 'P/E', 'P/sales', 'EPS']
+            df.loc[cik, 'proceeds'] = proceeds if proceeds else 0
+            df.loc[cik, 'liab_over_assets'] = liabil/assets if liabil and assets else 0
+            df.loc[cik, 'price_to_earnings'] = market_cap/net_income if net_income and market_cap else 0
+            df.loc[cik, 'sales'] = revenue if revenue else 0
+            df.loc[cik, 'price_to_sales'] = market_cap/revenue if revenue and market_cap else 0
+            df.loc[cik, 'EPS'] = net_income/num_shares if net_income and num_shares else 0
+            float_cols = ['liab_over_assets', 'price_to_earnings', 'price_to_sales', 'EPS']
             df[float_cols] = df[float_cols].astype(float)
 
         return df
@@ -720,31 +755,52 @@ if '__control_varialbes___':
 
     def misc_variables(df):
 
+        iprint("Setting misc variables...")
         df['percent_first_price_update'] = [x if x==x else 0 for x in df['percent_first_price_update']]
+
         df['priceupdate_up'] = [x if x>0 else 0 for x in df['percent_first_price_update']]
         df['priceupdate_down'] = [x if x<0 else 0 for x in df['percent_first_price_update']]
 
-        for cik in df.index:
-            iprint("Getting misc info for {}: {}".format(cik, firmname(cik)))
+        df['pct_final_revision_up'] = [x if x>0 else 0 for x in df['percent_final_price_revision']]
+        df['pct_final_revision_down'] = [x if x<0 else 0 for x in df['percent_final_price_revision']]
+
+
+        df['prange_change_plus'] = [abs(x) if x<0 else 0 for x in df['prange_change_first_price_update']]
+
+        df['days_from_s1_to_listing'] = [(aget(d2)-aget(d1)).days for d1,d2 in zip(df['date_s1_filing'], df['date_424b'])]
+
+
+        def delay_in_price_update(cik):
+            time_to_price_update = df.loc[cik, 'days_to_first_price_change']
+            roadshow_duration = df.loc[cik, 'days_from_priced_to_listing']
+            if np.isnan(time_to_price_update/roadshow_duration):
+                return 1 # 1st pricing on the day before listing
+            else:
+                return time_to_price_update/roadshow_duration
+
+        def merge_exchange(cik):
             exchange = company.loc[cik, 'Exchange']
             if exchange in ['NASDAQ National Market', 'NASDAQ Global Market']:
-                df.loc[cik, 'exchange'] = 'NASDAQ Global Market'
+                return 'NASDAQ Global Market'
             elif 'Smallcap' in exchange:
-                df.loc[cik, 'exchange'] = 'NASDAQ Smallcap Market'
+                return 'NASDAQ Smallcap Market'
             else:
-                df.loc[cik, 'exchange'] = exchange
+                return exchange
 
-        for cik in df.index:
-            iprint("Getting amends info for {}: {}".format(cik, firmname(cik)))
+        def amends_category(cik):
             p_update = df.loc[cik, 'size_of_first_price_update']
             if p_update == 0:
-                df.loc[cik, 'amends'] = "Same"
+                return "Same"
             elif p_update < 0:
-                df.loc[cik, 'amends'] = "Down"
+                return "Down"
             elif p_update > 0:
-                df.loc[cik, 'amends'] = "Up"
+                return "Up"
             elif p_update != p_update:
-                df.loc[cik, 'amends'] = "None"
+                return "None"
+
+        df['delay_in_price_update'] = list(map(delay_in_price_update, df.index))
+        df['exchange'] = list(map(merge_exchange, df.index))
+        df['amends'] = list(map(amends_category, df.index))
 
         return df
 
@@ -760,12 +816,12 @@ def from_FINALJSON_to_df():
     df = df.join(open_prices.sort_index())
     cols = ['Open', 'Close', 'High', 'Low', 'Volume']
     df[cols] = df[cols].astype(float)
-    df['Offer Price'] = [as_cash(s) for s in company.sort_index()['Share Price']]
+    df['Offer_Price'] = [as_cash(s) for s in company.sort_index()['Share Price']]
     df['open_return'] = (df['Open'] - df['Offer Price']) / df['Offer Price']
     df['close_return'] = (df['Close'] - df['Offer Price']) / df['Offer Price']
     df["SIC"] = metadata["SIC"]
     df['Coname'] = company['Company Name']
-    df['days_from_s1_to_listing'] = [(aget(d2)-aget(d1)).days for d1,d2 in zip(df.date_s1_filing, df.date_424b)]
+
 
     ########
     df = underwriter_ranks(df)
@@ -783,7 +839,7 @@ def from_FINALJSON_to_df():
 
 
 
-def attention_measures(ciks, category, event='final', makedir=False):
+def attention_measures(df, category, event='final', makedir=False):
     """Calculates ASI (abnormal search interest) and CASI (cumulative abnormal search interest)
         ASI = IoT - IoT_{n}day_median ({n}=15, 30, or 60 days back)
     Args:
@@ -796,7 +852,7 @@ def attention_measures(ciks, category, event='final', makedir=False):
     QDIR = os.path.join(os.path.expanduser('~'), 'Dropbox', 'gtrends-beta', 'cik-ipo', 'query_counts')
     QWEIGHTS = {'missing':0, 'weekly': 0.5, 'daily': 1}
     CATEGORYID = {'all': '0', 'finance': '0-7', 'business_industrial': '0-12'}
-    EVENT = {'final': 'final-price-revision', 'listing': 'listing-date', '1st_update': '1st-price-update'}
+    ciks = tuple(df.index)
 
     def build_qcount_dict(category):
         qdict = {}
@@ -827,12 +883,15 @@ def attention_measures(ciks, category, event='final', makedir=False):
         firm = df.loc[cik]
         start_date = aget(firm['date_1st_pricing'])
         trade_date = aget(firm['date_trading'])
-        # s1_date = aget(FINALJSON[cik]['Filing'][-1][2])
+
         if event=='final':
-            if not np.isnan(firm['days_to_final_price_revision']):
+            if firm['days_to_final_price_revision'] and not np.isnan(firm['days_to_final_price_revision']):
                 end_date = start_date.replace(days=firm['days_to_final_price_revision'])
             else:
                 end_date = trade_date
+
+        elif event=='listing':
+            end_date = trade_date
 
         elif event!='listing':
             if firm['days_to_first_price_update'] < firm['days_to_final_price_revision']:
@@ -873,11 +932,12 @@ def attention_measures(ciks, category, event='final', makedir=False):
         iot['%sday_CASI' % w] = rolling_sum(iot['%sday_ASI' % w], w)
         return iot
 
+
     # ciks = ['1439404', '1418091', '1271024', '1500435', '1318605', '1594109', '1326801', '1564902']
 
     for i, cik in enumerate(ciks):
         iprint('Computing interest-over-time <{}, {}>: {} {}'.format(
-                category, EVENT[event], cik, firmname(cik)))
+                category, event, cik, firmname(cik)))
 
         iot_raw_data = pd.read_csv(gtrends_file(cik=cik, category=category),
                                 parse_dates=[0],
@@ -893,7 +953,7 @@ def attention_measures(ciks, category, event='final', makedir=False):
 
         end_date = get_end_date(cik, event=event)
         # df.loc[cik, 'gtrends_name'] = firm
-        df.loc[cik, 'IoT_entity_type'] = get_entity_type(iot_raw_data, df)
+        # df.loc[cik, 'IoT_entity_type'] = get_entity_type(iot_raw_data, df)
 
         df.loc[cik, 'IoT_15day_CASI_%s' % category] = iot['15day_CASI'].loc[end_date]
         df.loc[cik, 'IoT_30day_CASI_%s' % category] = iot['30day_CASI'].loc[end_date]
@@ -901,8 +961,7 @@ def attention_measures(ciks, category, event='final', makedir=False):
         if makedir:
             make_dir(cik, category)
 
-    entity_types = Counter(df['IoT_entity_type'])
-    return entity_types
+    return df
 
 
 
@@ -1019,30 +1078,33 @@ def plot_iot(cik, category=''):
 
 def process_IOT_variables():
 
-    entities1 = attention_measures(df.index, 'all', event='final')
-    print(1)
-    entities2 = attention_measures(df.index, 'finance', event='final')
-    print(1)
-    entities3 = attention_measures(df.index, 'business_industrial', event='final')
+    entity_types = Counter(df['IoT_entity_type'])
+
+    ### Attention until final price revision
+    df = attention_measures(df, 'all', event='final')
+    df = attention_measures(df, 'finance', event='final')
+    df = attention_measures(df, 'business_industrial', event='final')
 
     df = weighted_iot(df, window=15, weighting='equal')
     df = weighted_iot(df, window=30, weighting='equal')
     df = weighted_iot(df, window=60, weighting='equal')
 
-    df = df[list(df.columns[:-14]) + iotkeys]
-    df.to_csv("df.csv", dtype={"cik": object})
+    df.to_csv("df.csv", dtype={"cik": object, 'SIC':object})
 
 
-    entities1 = attention_measures(df.index, 'all', event='1st_update')
-    entities2 = attention_measures(df.index, 'finance', event='1st_update')
-    entities3 = attention_measures(df.index, 'business_industrial', event='1st_update')
+    ### Attention until 1st price update
+    dfu = attention_measures(dfu, 'all', event='1st_update')
+    dfu = attention_measures(dfu, 'finance', event='1st_update')
+    dfu = attention_measures(dfu, 'business_industrial', event='1st_update')
 
-    df = weighted_iot(df, window=15, weighting='equal')
-    df = weighted_iot(df, window=30, weighting='equal')
-    df = weighted_iot(df, window=60, weighting='equal')
+    dfu = weighted_iot(dfu, window=15, weighting='equal')
+    dfu = weighted_iot(dfu, window=30, weighting='equal')
+    dfu = weighted_iot(dfu, window=60, weighting='equal')
 
-    df = df[list(df.columns[:-14]) + iotkeys]
-    df.to_csv("df_update.csv", dtype={"cik": object})
+    dfu.to_csv("df_update.csv", dtype={"cik": object, 'SIC':object})
+
+
+
 
 
 
@@ -1114,11 +1176,11 @@ if __name__=='__main__':
     open_prices = create_dataframe('Opening Prices')
 
 
-    df = pd.read_csv('df.csv', dtype={'cik':object})
+    df = pd.read_csv('df.csv', dtype={'cik':object, 'SIC':object})
     df.set_index('cik', inplace=True)
     # fulldf = pd.read_csv('full_df.csv', dtype={'cik': object})
     # fulldf.set_index('cik', inplace=True)
-    dfu = pd.read_csv('df_update.csv', dtype={'cik':object})
+    dfu = pd.read_csv('df_update.csv', dtype={'cik':object, 'SIC':object})
     dfu.set_index('cik', inplace=1)
 
     ciks = sorted(FINALJSON.keys())
