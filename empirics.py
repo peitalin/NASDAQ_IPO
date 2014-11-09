@@ -3,7 +3,6 @@ import glob, json, os, re
 import itertools
 import pandas as pd
 import numpy as np
-import requests
 import arrow
 import matplotlib.pyplot as plt
 import seaborn as sb
@@ -11,12 +10,8 @@ import statsmodels.formula.api as smf
 import statsmodels as sm
 
 from functools          import partial
-from collections        import Counter, OrderedDict
 from pprint             import pprint
-from concurrent.futures import ThreadPoolExecutor
 from numpy              import log, median, sign
-
-from IPython            import embed
 from widgets            import as_cash, next_row, next_col
 
 
@@ -114,7 +109,8 @@ VNAME = {
     'M3_indust_rets': '3-Month Industry Returns',
     'M3_initial_returns': '3-Month Average IPO Returns',
     'CASI': 'CASI',
-    'np.square(CASI)': 'CASI^2'
+    'np.square(CASI)': 'CASI^2',
+    'I(CASI^2)': 'CASI^2'
 }
 
 
@@ -157,25 +153,8 @@ if __name__=='__main__':
 
 
 
-def CASI_quantiles(df):
 
-    hi_ = df['IoT_15day_CASI_weighted_finance'].quantile(0.75)
-    lo_ = df['IoT_15day_CASI_weighted_finance'].quantile(0.25)
-
-    def qq_CASI(cik):
-        casi = df.loc[cik, 'IoT_15day_CASI_weighted_finance']
-        if casi > hi_:
-            return 'high'
-        elif casi < lo_:
-            return 'low'
-        else:
-            return 'mid'
-
-    df['CASI_tier'] = list(map(qq_CASI, df.index))
-    return df
-
-
-def xls_empirics(lm, column='C', sheet='15dayCASI', sigstars=True):
+def xls_empirics(lm, column='C', sheet='15dayCASI', cluster=('FF49_industry', 'Year'),sigstars=True):
 
     from xlwings import Workbook, Range, Sheet
     wb = Workbook("xl_empirics.xlsx")
@@ -201,8 +180,12 @@ def xls_empirics(lm, column='C', sheet='15dayCASI', sigstars=True):
             if ':' in v:
                 v1, v2 = v.split(':')
                 v1 = re.sub(r"IoT_\d\dday_(?=CASI_)CASI_[a-zA-Z_]*", 'CASI', v1)
+                v2 = re.sub(r"IoT_\d\dday_(?=CASI_)CASI_[a-zA-Z_]*", 'CASI', v2)
                 # Renames IOTKEY, np.square(IOTKEY), and log(IOTKEY) only.
-                v = v1 + ':' + v2
+                if 'CASI' in v1:
+                    v = v1 + ":" + v2
+                else:
+                    v = v2 + ":" + v1
                 Range('B' + VROW[v]).value = VNAME[v1] + " x " + VNAME[v2]
             else:
                 v = re.sub(r"IoT_\d\dday_(?=CASI_)CASI_[a-zA-Z_]*", 'CASI', v)
@@ -221,12 +204,56 @@ def xls_empirics(lm, column='C', sheet='15dayCASI', sigstars=True):
             Range(column + str(int(VROW[v])+1)).value = tval
 
 
+    def rpy_square_terms(eq, Rpy=True):
+        """Convert squared covariates syntax between R and Python.
+        Rpy=True => Python to R: np.square(X) -> I(X^2).
+        RPY=False => R to Python"""
+
+        eq = re.sub(r'\(Intercept\)', 'Intercept', eq)
+        if Rpy:
+            var = re.findall('(?<=np.square\()[\w_]*(?=\))', eq)
+            for v in var:
+                eq = eq.replace('np.square({})'.format(v), 'I({}^2)'.format(v))
+        else:
+            var = re.findall('(?<=I\()[\w_]*(?=\^2\))', eq)
+            for v in var:
+                eq = eq.replace('I({}^2)'.format(v), 'np.square({})'.format(v))
+        return eq
+
+
     # Range("C3:J3").value = ['(1)', '(2)', '(3)', '(4)',
     #                         None, '(6)', '(7)', '(8)',]
     Range("{col}4:{col}60".format(col=column)).value = [[None]]*60
 
+    if isinstance(lm, str):
+        eq = lm
+        if 'np.square' in eq:
+            eq = rpy_square_terms(eq)
 
-    if not is_logit(lm):
+
+        r("M <- lm({eq}, data=dfR)".format(eq=eq))
+        r("src('clmclx.R')")
+        if len(cluster) == 2:
+            r("M_cluster <- mclx(M, 1, dfR$%s, dfR$%s)" % cluster)
+        else:
+            r("M_cluster <- clx(M, 1, dfR$%s)" % cluster)
+
+
+        varnames = r("names(M$coefficients)".format(eq=eq))
+        varnames = [rpy_square_terms(v, Rpy=False) for v in varnames]
+        coefs = r("M_cluster[,1]".format(eq=eq))
+        pvals = r("M_cluster[,4]".format(eq=eq))
+        tvalues = r("M_cluster[,3]".format(eq=eq))
+        tvals = ['(%s)' % roundn(t, n=2) for t in tvalues]
+
+        Range('B' + VROW['Nobs']).value = 'No. Obs'
+        Range('B' + str(int(VROW['Rsq'])-1)).value = 'R^2'
+        Range(column + VROW['Nobs']).value = r("M$df.residual + M$rank")[0]
+        Range(column + str(int(VROW['Rsq'])-1)).value = r("summary(M)$r.squared")[0]
+
+        write_coefs_tvals(varnames, coefs, tvals, pvals)
+
+    elif not is_logit(lm):
         varnames = tuple(lm.params.keys())
         rlm = lm.get_robustcov_results()
         coefs = rlm.params
@@ -265,8 +292,8 @@ def xls_empirics(lm, column='C', sheet='15dayCASI', sigstars=True):
 
 def xls_final_revisions(days=15):
 
-    if '__variable_lookups__':
 
+    if '__variable_lookups__':
         ## THIS SETS THE XLS Variable Order
         VARS = [
             'Intercept',
@@ -316,9 +343,19 @@ def xls_final_revisions(days=15):
             '{}:{}'.format(IOTKEY, 'VC'), # 18
         ]
 
+    from rpy2.robjects import r
+    list(map(r, """
+        require(sandwich)
+        require(lmtest)
+        require(plm)
+        source("clmclx.R")
+        dfR <- data.table::fread("df.csv", colClasses=c(cik="character", SIC="character", Year="factor"))""".split('\n')))
+
+
     for i, col in zip([13,15,18], 'CEF'):
         X = " + ".join(ALLVAR[:i])
-        lm = smf.ols('percent_final_price_revision ~ ' + X, data=df).fit()
+        # lm = smf.ols('percent_final_price_revision ~ ' + X, data=df).fit()
+        lm = 'percent_final_price_revision ~ ' + X
         xls_empirics(lm, column=col, sheet='{}dayCASI'.format(days))
 
 
@@ -348,7 +385,8 @@ def xls_final_revisions(days=15):
 
     for i, col in zip([15,18], 'HI'):
         X = " + ".join(ALLVAR[:i])
-        lm = smf.ols('percent_final_price_revision ~ ' + X, data=df).fit()
+        # lm = smf.ols('percent_final_price_revision ~ ' + X, data=df).fit()
+        lm = 'percent_final_price_revision ~ ' + X
         xls_empirics(lm, column=col, sheet='{}dayCASI'.format(days))
 
 
@@ -415,6 +453,9 @@ def xls_final_revisions(days=15):
 ###################################################################
 ###################################################################
 ###################################################################
+###################################################################
+###################################################################
+###################################################################
 
 
 
@@ -476,14 +517,12 @@ def xls_final_revisions(days=15):
             'M3_initial_returns', # 9
             'pct_final_revision_up',
             'pct_final_revision_down',
-            # 'priceupdate_up',
-            # 'priceupdate_down',
             IOTKEY,               # 13
             'np.square(%s)' % IOTKEY,
-            # '%s:%s' % (IOTKEY, 'priceupdate_up'),
-            # '%s:%s' % (IOTKEY, 'priceupdate_down'),
             '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
+            '%s:np.square(%s)' % (IOTKEY, 'pct_final_revision_up'),
             # '%s:%s' % ('underwriter_rank_avg', 'pct_final_revision_up'),
+            # '%s:%s:%s' % ('underwriter_rank_avg', 'pct_final_revision_up', IOTKEY),
             # '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
             '%s:%s' % (IOTKEY, 'VC'),
         ]
@@ -506,9 +545,7 @@ def xls_final_revisions(days=15):
     Clearly, this implies additional structure needs to be incorporated into the IPO returns model.
 
     In this section, we specifically model IPO initial returns as a hierarchical(multilevel) model.
-
-
-
+    """
 
 
 
@@ -551,6 +588,12 @@ def xls_final_revisions(days=15):
 ###################################################################
 ###################################################################
 ###################################################################
+###################################################################
+###################################################################
+###################################################################
+
+
+
 
 def mnl_amends():
 
@@ -631,11 +674,23 @@ def xls_price_updates():
             'delay_in_price_update', # 14
         ]
 
+
+    from rpy2.robjects import r
+    list(map(r, """
+        require(sandwich)
+        require(lmtest)
+        require(plm)
+        source("clmclx.R")
+        df <- data.table::fread("df.csv", colClasses=c(cik="character", SIC="character", Year="factor"))
+        dfR <- df[!is.na(df$size_of_first_price_update)]""".split('\n')))
+
+
+
     # Fit controls only
     for i, col in zip([13,14], 'CD'):
         X = " + ".join(ALLVAR[:i])
-        lm = smf.ols('percent_first_price_update ~ ' + X, data=dup).fit()
-        xls_empirics(lm, column=col, sheet='updates_CASI')
+        lm = 'percent_first_price_update ~ ' + X
+        xls_empirics(lm, column=col, sheet='updates_CASI', cluster='FF49_industry')
 
 
     models = list(itertools.product([15,30], [2,3]))
@@ -644,16 +699,14 @@ def xls_price_updates():
         IOTKEY = 'IoT_{days}day_CASI_weighted_finance'.format(days=days)
         XVAR = [IOTKEY, 'np.square({})'.format(IOTKEY), '{}:{}'.format(IOTKEY, 'VC')]
         X = " + ".join(ALLVAR + XVAR[:i])
-        lm = smf.ols('percent_first_price_update ~ ' + X, data=dup).fit()
-        xls_empirics(lm, column=col, sheet='updates_CASI')
+        lm = 'percent_first_price_update ~ ' + X
+        xls_empirics(lm, column=col, sheet='updates_CASI', cluster='FF49_industry')
+
 
 
     """
     I make sure CASI is consistent with the date of the event, and sum CASI in the D-days before an event of interest (dependent variables such as filing price range amendments, or the final price revision).
     """
-
-
-    # xls_empirics(rlm, col='G', sheet='{}dayCASI'.format(days))
 
 
 
