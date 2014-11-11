@@ -32,7 +32,6 @@ if '__tools__':
         return ciks_conames, conames_ciks
 
     _ciks_conames, _conames_ciks = _vlookup_firms()
-
     iprint = partial(print, end=' '*32 + '\r')
 
     def firmname(cik):
@@ -95,24 +94,14 @@ def df_filings(FINALJSON=FINALJSON):
             return diff_dates, diff_prices, percent_price_change, diff_prange
         return [None, None, None, None]
 
-
-    # def first_prange_change(dates, prices, pranges):
-    #     for i, p in enumerate(pranges[:-1]):
-    #         if p == prange[0]:
-    #             continue
-    #         diff_prange = (pranges[i] - pranges[0])
-    #         diff_dates  = (dates[i] - dates[0]).days
-    #         return diff_prange, diff_dates
-    #     return [None, None]
-
     def num_price_updates_up(prices):
-        return 'not implemented'
+        return sum(1 for f,s in zip(prices, prices[1:]) if f<s)
 
     def num_price_updates_down(prices):
-        return 'not implemented'
+        return sum(1 for f,s in zip(prices, prices[1:]) if f>s)
 
     def num_price_updates(prices):
-        return len([x for x,y in zip(prices, prices[1:]) if x!=y])
+        return sum(1 for f,s in zip(prices, prices[1:]) if f!=s)
 
     def midpoint(cash_strings):
         prices = [as_cash(s) for s in cash_strings if as_cash(s)]
@@ -193,7 +182,7 @@ def df_filings(FINALJSON=FINALJSON):
                 print("{}: {} =>\n\tTrade date: {}\n\t424B Date: {}\n\tPriced: {}".format(cik, firmname(cik), trade_date, B424_date, priced_date))
                 ABNORMAL |= {cik}
 
-        # NASDAQ 'priced_date' tends to be early, get final revision price date
+        # NASDAQ 'priced_date' can be early, get true final revision price date
         if priced_date < B424_date < trade_date:
             final_rev_date = B424_date
         elif B424_date < priced_date  < trade_date:
@@ -228,6 +217,8 @@ def df_filings(FINALJSON=FINALJSON):
             percent_first_price_update = None
             prange_change_first_price_update = None
             number_of_price_updates = 0
+            number_of_price_updates_up = 0
+            number_of_price_updates_down = 0
             days_to_final_price_revision = None
             size_of_final_price_revision = None
             percent_final_price_revision = None
@@ -251,6 +242,8 @@ def df_filings(FINALJSON=FINALJSON):
                         print("{}: {} has large price updates".format(cik, firmname(cik)))
 
             number_of_price_updates = num_price_updates(prices)
+            number_of_price_updates_up = num_price_updates_up(prices)
+            number_of_price_updates_down = num_price_updates_down(prices)
             days_to_final_price_revision = (final_rev_date - dates[0]).days
             size_of_final_price_revision = listing_price - prices[0]
             percent_final_price_revision = (listing_price - prices[0]) / prices[0]
@@ -267,8 +260,15 @@ def df_filings(FINALJSON=FINALJSON):
         df.loc[cik, 'size_of_final_price_revision'] = size_of_final_price_revision
         df.loc[cik, 'percent_final_price_revision'] = percent_final_price_revision
 
-        pct_first_price_change = percent_first_price_update if percent_first_price_update else percent_final_price_revision
-        days_to_first_price_change = days_to_first_price_update if days_to_first_price_update else days_to_final_price_revision
+        if percent_first_price_update:
+            pct_first_price_change = percent_first_price_update
+        else:
+            pct_first_price_change = percent_final_price_revision
+
+        if days_to_first_price_update:
+            days_to_first_price_change = days_to_first_price_update
+        else:
+            days_to_first_price_change = days_to_final_price_revision
 
         df.loc[cik, 'pct_first_price_change'] = pct_first_price_change
         df.loc[cik, 'days_to_first_price_change'] = days_to_first_price_change
@@ -276,6 +276,8 @@ def df_filings(FINALJSON=FINALJSON):
         df.loc[cik, 'offer_in_filing_price_range'] = offer_in_filing_price_range
         df.loc[cik, 'prange_change_first_price_update'] = prange_change_first_price_update
         df.loc[cik, 'number_of_price_updates'] = number_of_price_updates
+        df.loc[cik, 'number_of_price_updates_up'] = number_of_price_updates_up
+        df.loc[cik, 'number_of_price_updates_down'] = number_of_price_updates_down
         df.loc[cik, 'shares_offered'] = int(company.loc[cik, 'Shares Offered'].replace(',',''))
 
         df.loc[cik, 'date_1st_pricing'] = dates[0]
@@ -320,6 +322,7 @@ if '__control_variables___':
             'prange_change_first_price_update', 'prange_change_plus',
             'delay_in_price_update',
             'number_of_price_updates',
+            'number_of_price_updates_up', 'number_of_price_updates_down',
             'offer_in_filing_price_range',
             'Coname', 'Year',
             'date_1st_pricing',  'date_last_pricing',
@@ -353,9 +356,11 @@ if '__control_variables___':
             'proceeds', 'market_cap', 'liab_over_assets',
             'price_to_earnings', 'price_to_sales', 'EPS', 'sales',
             'priceupdate_down', 'priceupdate_up',
-            'number_of_price_updates',  'total_dual_class_shares'
+            'total_dual_class_shares'
             ] + ipo_cycle_keys + iot_keys
-        col_int = ['Year', 'confidential_IPO', 'underwriter_num_leads', 'foreign', 'VC']
+        col_int = ['Year', 'confidential_IPO', 'underwriter_num_leads',
+            'foreign', 'VC', 'number_of_price_updates',
+            'number_of_price_updates_up', 'number_of_price_updates_down']
         col_obj = ['offer_in_filing_price_range', 'Coname', 'date_1st_pricing', 'date_last_pricing', 'date_424b', 'date_trading', 'date_s1_filing', 'Date', 'SIC', 'FF49_industry', 'underwriter_tier', 'exchange', 'amends',
             ]
 
@@ -838,241 +843,306 @@ def from_FINALJSON_to_df():
 
 
 
+if '__Attention_variables__':
 
-def attention_measures(df, category, event='final', makedir=False):
-    """Calculates ASI (abnormal search interest) and CASI (cumulative abnormal search interest)
-        ASI = IoT - IoT_{n}day_median ({n}=15, 30, or 60 days back)
-    Args:
-        --category: 'business_industrial', 'finance', 'all'
-        --df: dataframe
-        --event: ['final', '1st_update', 'listing']
-    """
+    def attention_measures(df, category, event='final', makedir=False):
+        """Calculates ASI (abnormal search interest) and CASI (cumulative abnormal search interest)
+            ASI = IoT - IoT_{n}day_median ({n}=15, 30, or 60 days back)
+        Args:
+            --category: 'business_industrial', 'finance', 'all'
+            --df: dataframe
+            --event: ['final', '1st_update', 'listing']
+        """
 
-    from pandas.stats.moments import rolling_median, rolling_sum
-    QDIR = os.path.join(os.path.expanduser('~'), 'Dropbox', 'gtrends-beta', 'cik-ipo', 'query_counts')
-    QWEIGHTS = {'missing':0, 'weekly': 0.5, 'daily': 1}
-    CATEGORYID = {'all': '0', 'finance': '0-7', 'business_industrial': '0-12'}
-    ciks = tuple(df.index)
+        from pandas.stats.moments import rolling_median, rolling_sum
+        QDIR = os.path.join(os.path.expanduser('~'), 'Dropbox', 'gtrends-beta', 'cik-ipo', 'query_counts')
+        QWEIGHTS = {'missing':-1, 'weekly': 0, 'daily': 1}
+        CATEGORYID = {'all': '0', 'finance': '0-7', 'business_industrial': '0-12'}
+        ciks = tuple(df.index)
 
-    def build_qcount_dict(category):
-        qdict = {}
-        for cik in ciks:
-            iprint('Building qcount list: %s' % cik)
-            qfile = os.path.join(QDIR, CATEGORYID[category], cik+'.csv')
-            with open(qfile) as f:
-                qcounts = [x.strip().split(',')[-1] for x in f.readlines()[1:]]
-            qdict.update({cik:qcounts})
-        return qdict
+        def build_qcount_dict(category):
+            qdict = {}
+            for cik in ciks:
+                iprint('Building qcount list: %s' % cik)
+                qfile = os.path.join(QDIR, CATEGORYID[category], cik+'.csv')
+                with open(qfile) as f:
+                    qcounts = [x.strip().split(',')[-1] for x in f.readlines()[1:]]
+                qdict.update({cik:qcounts})
+            return qdict
 
-    QDICT = build_qcount_dict(category)
+        QDICT = build_qcount_dict(category)
 
-    def gtrends_file(cik, category):
-        gtrends_dir = os.path.join(os.path.expanduser('~'), 'Dropbox', 'gtrends-beta', 'cik-ipo', category)
-        # gtrends_dir = os.path.join(BASEDIR, 'cik-ipo', category)
-        return os.path.join(gtrends_dir, str(cik)+'.csv')
+        def gtrends_file(cik, category):
+            gtrends_dir = os.path.join(os.path.expanduser('~'), 'Dropbox', 'gtrends-beta', 'cik-ipo', category)
+            # gtrends_dir = os.path.join(BASEDIR, 'cik-ipo', category)
+            return os.path.join(gtrends_dir, str(cik)+'.csv')
 
-    def make_dir(cik, category):
-        fdir = os.path.join(BASEDIR, 'IoT', category)
-        if not os.path.exists(fdir):
-            os.makedirs(fdir)
-        iot.to_csv(os.path.join(fdir, 'IoT_'+cik+'.csv'))
+        def make_dir(cik, category):
+            fdir = os.path.join(BASEDIR, 'IoT', category)
+            if not os.path.exists(fdir):
+                os.makedirs(fdir)
+            iot.to_csv(os.path.join(fdir, 'IoT_'+cik+'.csv'))
 
-    def get_end_date(cik, event='final'):
-        "Args: event: ['final', '1st_update', 'listing'] "
+        def get_end_date(cik, event='final'):
+            "Args: event: ['final', '1st_update', 'listing'] "
 
-        firm = df.loc[cik]
-        start_date = aget(firm['date_1st_pricing'])
-        trade_date = aget(firm['date_trading'])
+            firm = df.loc[cik]
+            start_date = aget(firm['date_1st_pricing'])
+            trade_date = aget(firm['date_trading'])
 
-        if event=='final':
-            if firm['days_to_final_price_revision'] and not np.isnan(firm['days_to_final_price_revision']):
-                end_date = start_date.replace(days=firm['days_to_final_price_revision'])
-            else:
+            if event=='final':
+                if firm['days_to_final_price_revision'] and not np.isnan(firm['days_to_final_price_revision']):
+                    end_date = start_date.replace(days=firm['days_to_final_price_revision'])
+                else:
+                    end_date = trade_date
+
+            elif event=='listing':
                 end_date = trade_date
 
-        elif event=='listing':
-            end_date = trade_date
+            elif event!='listing':
+                if firm['days_to_first_price_update'] < firm['days_to_final_price_revision']:
+                    end_date = start_date.replace(days=firm['days_to_first_price_update'])
+                elif not np.isnan(firm['days_to_final_price_revision']):
+                    end_date = start_date.replace(days=firm['days_to_final_price_revision'])
+                else:
+                    end_date = aget(firm['date_trading'])
 
-        elif event!='listing':
-            if firm['days_to_first_price_update'] < firm['days_to_final_price_revision']:
-                end_date = start_date.replace(days=firm['days_to_first_price_update'])
-            elif not np.isnan(firm['days_to_final_price_revision']):
-                end_date = start_date.replace(days=firm['days_to_final_price_revision'])
+            return end_date.date()
+
+        def get_entity_type(iot_data , df):
+            if 'IoT_entity_type' in df.keys():
+                if iot_data.columns[1] != 'Search term' and df.loc[cik, 'IoT_entity_type'] == 'Search term':
+                    entity_type = iot_data.columns[1]
+                else:
+                    entity_type = df.loc[cik, 'IoT_entity_type']
+            return entity_type
+
+        def lambda_param(cik, category):
+            "Calculates scaling factor depending on whether iot is daily or weekly or none."
+            qcounts = QDICT[cik]
+            return sum(QWEIGHTS[q] for q in qcounts) / len(qcounts)
+
+        def box_cox(CASI, lambda_param=0):
+            "Returns the John & Draper (1980) modulus transformation"
+            if lambda_param == 0:
+                return sign(CASI) * log(1 + abs(CASI))
             else:
-                end_date = aget(firm['date_trading'])
+                return sign(CASI) * ((1 + abs(CASI))**lambda_param - 1) / lambda_param
 
-        return end_date.date()
+        def rolling_attention(iot, window):
+            "callback function for ASI calculations"
+            w = window
+            firm = iot.columns[0]
+            iot['%sday_median' % w] = rolling_median(iot[firm], w)
+            iot['%sday_ASI' % w] = log((1 + iot[firm]) / (1 + iot['%sday_median' % w]))
+            iot['%sday_CASI' % w] = rolling_sum(iot['%sday_ASI' % w], w)
+            return iot
 
-    def get_entity_type(iot_data , df):
-        if 'IoT_entity_type' in df.keys():
-            if iot_data.columns[1] != 'Search term' and df.loc[cik, 'IoT_entity_type'] == 'Search term':
-                entity_type = iot_data.columns[1]
-            else:
-                entity_type = df.loc[cik, 'IoT_entity_type']
-        return entity_type
 
-    def lambda_param(cik, category):
-        "Calculates scaling factor depending on whether iot is daily or weekly or none."
-        qcounts = QDICT[cik]
-        return sum(QWEIGHTS[q] for q in qcounts) / len(qcounts)
+        # ciks = ['1439404', '1418091', '1271024', '1500435', '1318605', '1594109', '1326801', '1564902']
 
-    def box_cox(CASI, lambda_param=0):
-        "Returns the John & Draper (1980) modulus transformation"
-        if lambda_param == 0:
-            return sign(CASI) * log(1 + abs(CASI))
-        else:
-            return sign(CASI) * ((1 + abs(CASI))**lambda_param - 1) / lambda_param
+        for i, cik in enumerate(ciks):
+            iprint('Computing interest-over-time <{}, {}>: {} {}'.format(
+                    category, event, cik, firmname(cik)))
 
-    def rolling_attention(iot, window):
-        "callback function for ASI calculations"
+            iot_raw_data = pd.read_csv(gtrends_file(cik=cik, category=category),
+                                    parse_dates=[0],
+                                    date_parser=lambda d: aget(d).date(),
+                                    index_col="Date")
+            firm = iot_raw_data.columns[0]
+            iot = iot_raw_data[iot_raw_data.columns[:1]]
+            iot[firm] = box_cox(iot[firm], lambda_param=lambda_param(cik, category))
+
+            iot = rolling_attention(iot, window=15)
+            iot = rolling_attention(iot, window=30)
+            iot = rolling_attention(iot, window=60)
+
+            end_date = get_end_date(cik, event=event)
+            # df.loc[cik, 'gtrends_name'] = firm
+            # df.loc[cik, 'IoT_entity_type'] = get_entity_type(iot_raw_data, df)
+
+            df.loc[cik, 'IoT_15day_CASI_%s' % category] = iot['15day_CASI'].loc[end_date]
+            df.loc[cik, 'IoT_30day_CASI_%s' % category] = iot['30day_CASI'].loc[end_date]
+            df.loc[cik, 'IoT_60day_CASI_%s' % category] = iot['60day_CASI'].loc[end_date]
+            if makedir:
+                make_dir(cik, category)
+
+        return df
+
+
+    def weighted_iot(df, window=15, weighting='equal'):
+
         w = window
-        firm = iot.columns[0]
-        iot['%sday_median' % w] = rolling_median(iot[firm], w)
-        iot['%sday_ASI' % w] = log((1 + iot[firm]) / (1 + iot['%sday_median' % w]))
-        iot['%sday_CASI' % w] = rolling_sum(iot['%sday_ASI' % w], w)
-        return iot
 
-
-    # ciks = ['1439404', '1418091', '1271024', '1500435', '1318605', '1594109', '1326801', '1564902']
-
-    for i, cik in enumerate(ciks):
-        iprint('Computing interest-over-time <{}, {}>: {} {}'.format(
-                category, event, cik, firmname(cik)))
-
-        iot_raw_data = pd.read_csv(gtrends_file(cik=cik, category=category),
-                                parse_dates=[0],
-                                date_parser=lambda d: aget(d).date(),
-                                index_col="Date")
-        firm = iot_raw_data.columns[0]
-        iot = iot_raw_data[iot_raw_data.columns[:1]]
-        iot[firm] = box_cox(iot[firm], lambda_param=lambda_param(cik, category))
-
-        iot = rolling_attention(iot, window=15)
-        iot = rolling_attention(iot, window=30)
-        iot = rolling_attention(iot, window=60)
-
-        end_date = get_end_date(cik, event=event)
-        # df.loc[cik, 'gtrends_name'] = firm
-        # df.loc[cik, 'IoT_entity_type'] = get_entity_type(iot_raw_data, df)
-
-        df.loc[cik, 'IoT_15day_CASI_%s' % category] = iot['15day_CASI'].loc[end_date]
-        df.loc[cik, 'IoT_30day_CASI_%s' % category] = iot['30day_CASI'].loc[end_date]
-        df.loc[cik, 'IoT_60day_CASI_%s' % category] = iot['60day_CASI'].loc[end_date]
-        if makedir:
-            make_dir(cik, category)
-
-    return df
-
-
-
-
-
-
-
-def weighted_iot(df, window=15, weighting='equal'):
-
-    w = window
-
-    if weighting=='value_weighted':
-        all_iot = sum(1 for x in df["IoT_{}day_CASI_all".format(w)] if x != 0)
-        finance = sum(1 for x in df["IoT_{}day_CASI_finance".format(w)] if x != 0)
-        bus_ind = sum(1 for x in df["IoT_{}day_CASI_business_industrial".format(w)] if x != 0)
-        total = all_iot + finance + bus_ind
-        wa = weight_all_iot = all_iot/total
-        wf = weight_finance = finance/total
-        wb = weight_bus_ind = bus_ind/total
-    else:
-        wa, wf, wb = [1/3, 1/3, 1/3]
-
-    df['IoT_{}day_CASI_weighted_finance'.format(w)] = \
-        wa * df['IoT_{}day_CASI_all'.format(w)] + \
-        wf * df['IoT_{}day_CASI_finance'.format(w)] + \
-        wb * df['IoT_{}day_CASI_business_industrial'.format(w)]
-    return df
-
-
-
-def plot_iot(cik, category=''):
-    "plots Google Trends Interest-over-time (IoT)"
-
-    import matplotlib.dates as mdates
-
-    def gtrends_file(cik, category):
-        gtrends_dir = os.path.join(os.path.expanduser('~'), 'Dropbox', 'gtrends-beta', 'cik-ipo', category)
-        # gtrends_dir = os.path.join(BASEDIR, 'cik-ipo', category)
-        return os.path.join(gtrends_dir, str(cik)+'.csv')
-
-    cik = str(cik) if not isinstance(cik, str) else cik
-    cik = get_cik(cik) if not cik.isdigit() else cik
-    # colors = [rgb_to_hex(c) for c in sb.color_palette("colorblind")]
-    colors = ['#0072b2', '#009e73', '#d55e00', '#cc79a7', '#f0e442', '#56b4e9']
-
-
-    if category == '':
-        iot_data_fin = pd.read_csv(gtrends_file(cik=cik, category='finance'))
-        iot_data_all = pd.read_csv(gtrends_file(cik=cik, category='all'))
-        if len(iot_data_fin) == len(iot_data_all):
-            iot_data = iot_data_fin
-            category = 'finance'
+        if weighting=='value_weighted':
+            all_iot = sum(1 for x in df["IoT_{}day_CASI_all".format(w)] if x != 0)
+            finance = sum(1 for x in df["IoT_{}day_CASI_finance".format(w)] if x != 0)
+            bus_ind = sum(1 for x in df["IoT_{}day_CASI_business_industrial".format(w)] if x != 0)
+            total = all_iot + finance + bus_ind
+            wa = weight_all_iot = all_iot/total
+            wf = weight_finance = finance/total
+            wb = weight_bus_ind = bus_ind/total
         else:
-            iot_data = iot_data_all
-            category = 'all'
-    else:
+            wa, wf, wb = [1/3, 1/3, 1/3]
+
+        df['IoT_{}day_CASI_weighted_finance'.format(w)] = \
+            wa * df['IoT_{}day_CASI_all'.format(w)] + \
+            wf * df['IoT_{}day_CASI_finance'.format(w)] + \
+            wb * df['IoT_{}day_CASI_business_industrial'.format(w)]
+        return df
+
+
+    def news_iot(df, window=15):
+
+        def news_casi(cik, w=window):
+            casi_fin = df.loc[cik, 'IoT_{}day_CASI_finance'.format(w)]
+            casi_all = df.loc[cik, 'IoT_{}day_CASI_all'.format(w)]
+            casi_bus = df.loc[cik, 'IoT_{}day_CASI_business_industrial'.format(w)]
+            if casi_fin==0 and casi_bus==0:
+                return casi_all
+            elif casi_bus==0:
+                return casi_fin
+            elif casi_fin==0:
+                return casi_bus
+            else:
+                return np.mean([casi_fin, casi_bus])
+
+        df['IoT_{}day_CASI_news'.format(window)] = list(map(news_casi, df.index))
+        return df
+
+
+    def plot_iot(cik, category=''):
+        "plots Google Trends Interest-over-time (IoT)"
+
+        import matplotlib.dates as mdates
+
+        def gtrends_file(cik, category):
+            gtrends_dir = os.path.join(os.path.expanduser('~'), 'Dropbox', 'gtrends-beta', 'cik-ipo', category)
+            # gtrends_dir = os.path.join(BASEDIR, 'cik-ipo', category)
+            return os.path.join(gtrends_dir, str(cik)+'.csv')
+
+        cik = str(cik) if not isinstance(cik, str) else cik
+        cik = get_cik(cik) if not cik.isdigit() else cik
+        # colors = [rgb_to_hex(c) for c in sb.color_palette("colorblind")]
+        colors = ['#0072b2', '#009e73', '#d55e00', '#cc79a7', '#f0e442', '#56b4e9']
+
+
+        if category == '':
+            iot_data_fin = pd.read_csv(gtrends_file(cik=cik, category='finance'))
+            iot_data_all = pd.read_csv(gtrends_file(cik=cik, category='all'))
+            if len(iot_data_fin) == len(iot_data_all):
+                iot_data = iot_data_fin
+                category = 'finance'
+            else:
+                iot_data = iot_data_all
+                category = 'all'
+        else:
+            iot_data = pd.read_csv(gtrends_file(cik=cik, category=category))
+
+
         iot_data = pd.read_csv(gtrends_file(cik=cik, category=category))
+        firm = iot_data.columns[1]
+        iot_data['Date'] = [arrow.get(d).date() for d in iot_data['Date']]
+        # iot_melt = pd.melt(iot_data.icol([0,1]), id_vars=['Date'])
+        # iot_melt.columns = ['Date', firm, 'Interest-over-time']
+        # ax = iot_melt.groupby([firm, 'Date']).mean().unstack('Tesla Motors').plot()
+
+        s1_date = arrow.get(df.loc[cik, 'date_s1_filing']).date()
+        anno_index1 = iot_data[iot_data.Date == s1_date].index[0]
+
+        roadshow_date = arrow.get(df.loc[cik, 'date_1st_pricing']).date()
+        anno_index2 = iot_data[iot_data.Date == roadshow_date].index[0]
+
+        date_listed = arrow.get(df.loc[cik, 'date_trading']).date()
+        anno_index3 = iot_data[iot_data.Date == date_listed].index[0]
 
 
-    iot_data = pd.read_csv(gtrends_file(cik=cik, category=category))
-    firm = iot_data.columns[1]
-    iot_data['Date'] = [arrow.get(d).date() for d in iot_data['Date']]
-    # iot_melt = pd.melt(iot_data.icol([0,1]), id_vars=['Date'])
-    # iot_melt.columns = ['Date', firm, 'Interest-over-time']
-    # ax = iot_melt.groupby([firm, 'Date']).mean().unstack('Tesla Motors').plot()
+        fig, ax = plt.subplots(sharex=True, figsize=(15,5))
+        ax.plot(iot_data["Date"], iot_data[firm], label='Search Interest: {} ({})'.format(firm, iot_data.columns[2]))
+        ax.annotate('S-1 Filing',
+                    (mdates.date2num(iot_data.Date[anno_index1]), iot_data[firm][anno_index1]),
+                    xytext=(20, 20),
+                    size=11,
+                    color=colors[2],
+                    textcoords='offset points',
+                    arrowprops=dict(width=1.5, headwidth=5, shrink=0.1, color=colors[2]))
 
-    s1_date = arrow.get(df.loc[cik, 'date_s1_filing']).date()
-    anno_index1 = iot_data[iot_data.Date == s1_date].index[0]
+        ax.annotate('Roadshow Begins',
+                    (mdates.date2num(iot_data.Date[anno_index2]), iot_data[firm][anno_index2]),
+                    xytext=(15, 15),
+                    size=11,
+                    color=colors[2],
+                    textcoords='offset points',
+                    arrowprops=dict(width=1.5, headwidth=5, shrink=0.1, color=colors[2]))
 
-    roadshow_date = arrow.get(df.loc[cik, 'date_1st_pricing']).date()
-    anno_index2 = iot_data[iot_data.Date == roadshow_date].index[0]
+        ax.annotate('IPO Listing Date',
+                    (mdates.date2num(iot_data.Date[anno_index3]), iot_data[firm][anno_index3]),
+                    xytext=(20, 20),
+                    size=11,
+                    color=colors[2],
+                    textcoords='offset points',
+                    arrowprops=dict(width=1.5, headwidth=5, shrink=0.1, color=colors[2]))
 
-    date_listed = arrow.get(df.loc[cik, 'date_trading']).date()
-    anno_index3 = iot_data[iot_data.Date == date_listed].index[0]
-
-
-    fig, ax = plt.subplots(sharex=True, figsize=(15,5))
-    ax.plot(iot_data["Date"], iot_data[firm], label='Search Interest: {} ({})'.format(firm, iot_data.columns[2]))
-    ax.annotate('S-1 Filing',
-                (mdates.date2num(iot_data.Date[anno_index1]), iot_data[firm][anno_index1]),
-                xytext=(20, 20),
-                size=11,
-                color=colors[2],
-                textcoords='offset points',
-                arrowprops=dict(width=1.5, headwidth=5, shrink=0.1, color=colors[2]))
-
-    ax.annotate('Roadshow Begins',
-                (mdates.date2num(iot_data.Date[anno_index2]), iot_data[firm][anno_index2]),
-                xytext=(15, 15),
-                size=11,
-                color=colors[2],
-                textcoords='offset points',
-                arrowprops=dict(width=1.5, headwidth=5, shrink=0.1, color=colors[2]))
-
-    ax.annotate('IPO Listing Date',
-                (mdates.date2num(iot_data.Date[anno_index3]), iot_data[firm][anno_index3]),
-                xytext=(20, 20),
-                size=11,
-                color=colors[2],
-                textcoords='offset points',
-                arrowprops=dict(width=1.5, headwidth=5, shrink=0.1, color=colors[2]))
-
-    plt.title("Interest-over-time for {} - ({})".format(firm, category))
-    plt.ylabel("Search Interest")
-    plt.legend()
-    plt.show()
+        plt.title("Interest-over-time for {} - ({})".format(firm, category))
+        plt.ylabel("Search Interest")
+        plt.legend()
+        plt.show()
 
 
+    def abnormal_svi(df, window=15, category='all'):
 
+        def get_mid_date(cik, event='final'):
+            "Args: event: ['final', '1st_update', 'listing'] "
+            firm = df.loc[cik]
+            start_date = aget(firm['date_1st_pricing'])
+            trade_date = aget(firm['date_trading'])
+            if event=='final':
+                if not np.isnan(firm['days_to_final_price_revision']):
+                    end_date = start_date.replace(days=firm['days_to_final_price_revision'])
+                else:
+                    end_date = trade_date
+            elif event!='listing':
+                if firm['days_to_first_price_update'] < firm['days_to_final_price_revision']:
+                    end_date = start_date.replace(days=firm['days_to_first_price_update'])
+                elif not np.isnan(firm['days_to_final_price_revision']):
+                    end_date = start_date.replace(days=firm['days_to_final_price_revision'])
+                else:
+                    end_date = aget(firm['date_trading'])
+            return end_date
 
+        if os.path.exists("IoT/ASVI_{}day_{}.csv".format(window, category)):
+            ASVI = pd.read_csv("IoT/ASVI_{}day_{}.csv".format(window, category), dtype={'cik': object}).set_index('cik')
+            return ASVI
 
+        w = window
+        columns = ['t-{}'.format(d) for d in range(w+1)][::-1] + ['t+{}'.format(d) for d in range(1, w+1)]
+        ASVI = []
+
+        for cik in df.index:
+            iprint("Getting ASVI => {}:{}".format(cik, firmname(cik)))
+            fdir = os.path.join(BASEDIR, 'IoT/{}'.format(category), 'IoT_{}.csv'.format(cik))
+            iot = pd.read_csv(fdir, parse_dates=[0], date_parser=aget)
+            iot.set_index("Date", inplace=1)
+            mid_date = get_mid_date(cik, event='final')
+            drange = arrow.Arrow.range('day', mid_date.replace(days=-w), mid_date.replace(days=w))
+            ASVI.append(list(iot.loc[drange, '{}day_CASI'.format(w)]))
+
+        ASVI = pd.DataFrame(ASVI, index=df.index, columns=columns)
+        ASVI.to_csv('IoT/ASVI_{}day_{}.csv'.format(window, category), dtype={'cik':object})
+        return ASVI
+
+        """
+        if category='weighted_finance':
+            ASVI15_ = (abnormal_svi(df, window=15, category='all') +
+                      abnormal_svi(df, window=15, category='business_industrial') +
+                      abnormal_svi(df, window=15, category='finance')) / 3
+            ASVI30_ = (abnormal_svi(df, window=30, category='all') +
+                      abnormal_svi(df, window=30, category='business_industrial') +
+                      abnormal_svi(df, window=30, category='finance')) / 3
+            ASVI60_ = (abnormal_svi(df, window=60, category='all') +
+                      abnormal_svi(df, window=60, category='business_industrial') +
+                      abnormal_svi(df, window=60, category='finance')) / 3
+        """
 
 
 
@@ -1088,6 +1158,8 @@ def process_IOT_variables():
     df = weighted_iot(df, window=15, weighting='equal')
     df = weighted_iot(df, window=30, weighting='equal')
     df = weighted_iot(df, window=60, weighting='equal')
+
+    df = news_iot(df, window=15)
 
     df.to_csv("df.csv", dtype={"cik": object, 'SIC':object})
 
@@ -1109,60 +1181,6 @@ def process_IOT_variables():
 
 
 
-def abnormal_svi(df, window=15, category='all'):
-
-    def get_mid_date(cik, event='final'):
-        "Args: event: ['final', '1st_update', 'listing'] "
-        firm = df.loc[cik]
-        start_date = aget(firm['date_1st_pricing'])
-        trade_date = aget(firm['date_trading'])
-        if event=='final':
-            if not np.isnan(firm['days_to_final_price_revision']):
-                end_date = start_date.replace(days=firm['days_to_final_price_revision'])
-            else:
-                end_date = trade_date
-        elif event!='listing':
-            if firm['days_to_first_price_update'] < firm['days_to_final_price_revision']:
-                end_date = start_date.replace(days=firm['days_to_first_price_update'])
-            elif not np.isnan(firm['days_to_final_price_revision']):
-                end_date = start_date.replace(days=firm['days_to_final_price_revision'])
-            else:
-                end_date = aget(firm['date_trading'])
-        return end_date
-
-    if os.path.exists("IoT/ASVI_{}day_{}.csv".format(window, category)):
-        ASVI = pd.read_csv("IoT/ASVI_{}day_{}.csv".format(window, category), dtype={'cik': object}).set_index('cik')
-        return ASVI
-
-    w = window
-    columns = ['t-{}'.format(d) for d in range(w+1)][::-1] + ['t+{}'.format(d) for d in range(1, w+1)]
-    ASVI = []
-
-    for cik in df.index:
-        iprint("Getting ASVI => {}:{}".format(cik, firmname(cik)))
-        fdir = os.path.join(BASEDIR, 'IoT/{}'.format(category), 'IoT_{}.csv'.format(cik))
-        iot = pd.read_csv(fdir, parse_dates=[0], date_parser=aget)
-        iot.set_index("Date", inplace=1)
-        mid_date = get_mid_date(cik, event='final')
-        drange = arrow.Arrow.range('day', mid_date.replace(days=-w), mid_date.replace(days=w))
-        ASVI.append(list(iot.loc[drange, '{}day_CASI'.format(w)]))
-
-    ASVI = pd.DataFrame(ASVI, index=df.index, columns=columns)
-    ASVI.to_csv('IoT/ASVI_{}day_{}.csv'.format(window, category), dtype={'cik':object})
-    return ASVI
-
-    """
-    if category='weighted_finance':
-        ASVI15_ = (abnormal_svi(df, window=15, category='all') +
-                  abnormal_svi(df, window=15, category='business_industrial') +
-                  abnormal_svi(df, window=15, category='finance')) / 3
-        ASVI30_ = (abnormal_svi(df, window=30, category='all') +
-                  abnormal_svi(df, window=30, category='business_industrial') +
-                  abnormal_svi(df, window=30, category='finance')) / 3
-        ASVI60_ = (abnormal_svi(df, window=60, category='all') +
-                  abnormal_svi(df, window=60, category='business_industrial') +
-                  abnormal_svi(df, window=60, category='finance')) / 3
-    """
 
 
 
@@ -1175,13 +1193,14 @@ if __name__=='__main__':
     filings     = create_dataframe('Filing')
     open_prices = create_dataframe('Opening Prices')
 
-
-    df = pd.read_csv('df.csv', dtype={'cik':object, 'SIC':object})
-    df.set_index('cik', inplace=True)
     # fulldf = pd.read_csv('full_df.csv', dtype={'cik': object})
     # fulldf.set_index('cik', inplace=True)
-    dfu = pd.read_csv('df_update.csv', dtype={'cik':object, 'SIC':object})
-    dfu.set_index('cik', inplace=1)
+
+    df = pd.read_csv("df.csv", dtype={'cik':object, 'Year':object, 'SIC':object})
+    dfu = pd.read_csv("df_update.csv", dtype={'cik':object, 'Year':object, 'SIC':object})
+    df.set_index('cik', inplace=True)
+    dfu.set_index('cik', inplace=True)
+
 
     ciks = sorted(FINALJSON.keys())
     cik = '1439404' # Zynga         # 8.6
