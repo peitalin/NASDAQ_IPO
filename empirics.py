@@ -93,6 +93,8 @@ VNAME = {
     'priceupdate_down': 'Price Update (down)',
     'pct_final_revision_up': 'Final Price Revision (up)',
     'pct_final_revision_down': 'Final Price Revision (down)',
+    'pct_first_price_change_up': 'First Price Update (up)',
+    'pct_first_price_change_down': 'First Price Update (down)',
     'prange_change_plus': 'Price Range Change',
     'number_of_price_updates': 'No. Price Amendments',
     'number_of_price_updates_up': 'No. Price Updates (up)',
@@ -139,8 +141,11 @@ if __name__=='__main__':
 
     df = pd.read_csv("df.csv", dtype={'cik':object, 'Year':object, 'SIC':object})
     dfu = pd.read_csv("df_update.csv", dtype={'cik':object, 'Year':object, 'SIC':object})
+    dfl = pd.read_csv("dfl.csv", dtype={'cik':object, 'Year':object, 'SIC':object})
+
     df.set_index("cik", inplace=1)
     dfu.set_index("cik", inplace=1)
+    dfl.set_index("cik", inplace=1)
 
     dup = df[df['size_of_first_price_update'].notnull()]
     dnone = df[df['prange_change_first_price_update'].isnull()]
@@ -149,7 +154,7 @@ if __name__=='__main__':
 
 
 
-def xls_empirics(lm, column='C', sheet='15dayCASI', cluster=('FF49_industry', 'underwriter_rank_single'),sigstars=True):
+def xls_empirics(lm, column='C', sheet='15dayCASI', cluster=('FF49_industry', 'underwriter_rank_single'), sigstars=True):
 
     from xlwings import Workbook, Range, Sheet
     wb = Workbook("xl_empirics.xlsx")
@@ -349,7 +354,7 @@ def xls_final_revisions(days=15):
         X = " + ".join(ALLVAR[:i])
         # lm = smf.ols('percent_final_price_revision ~ ' + X, data=df).fit()
         lm = 'percent_final_price_revision ~ ' + X
-        xls_empirics(lm, column=col, sheet='{}dayCASI'.format(days), cluster=('FF49_industry', 'Year'))
+        xls_empirics(lm, column=col, sheet='{}dayCASI'.format(days), cluster=('FF49_industry'))
 
 
     # ALL
@@ -379,7 +384,7 @@ def xls_final_revisions(days=15):
         X = " + ".join(ALLVAR[:i])
         # lm = smf.ols('percent_final_price_revision ~ ' + X, data=df).fit()
         lm = 'percent_final_price_revision ~ ' + X
-        xls_empirics(lm, column=col, sheet='{}dayCASI'.format(days), cluster=('FF49_industry', 'Year'))
+        xls_empirics(lm, column=col, sheet='{}dayCASI'.format(days), cluster=('FF49_industry'))
 
 
 
@@ -409,65 +414,8 @@ def xls_final_revisions(days=15):
         X = " + ".join(ALLVAR[:i])
         # lm = smf.ols('percent_final_price_revision ~ ' + X, data=df).fit()
         lm = 'percent_final_price_revision ~ ' + X
-        xls_empirics(lm, column=col, sheet='{}dayCASI'.format(days), cluster=('FF49_industry', 'Year'))
+        xls_empirics(lm, column=col, sheet='{}dayCASI'.format(days), cluster=('FF49_industry'))
 
-
-
-
-    """
-
-
-    15day CASI has larger coefficients than 30 and 60 day CASI. The results from 60 day CASI are economically weak compared to 15day and 30 day CASI regressions (omitted).
-
-
-    Coefficient estimates of 1.16 for priceupdate suggests incremental predictability of price amendments in determining the final offer price. However including CASi variables attenuates this effect close to 1.
-
-
-    CASI is robust across various model specifications, and has incremental explanatory power of price updates, which are noted to vary almost 1 to 1 with final price revisions.
-
-    This suggests much information is incorporated into the 1st price amendment and price amendments appear to adjust fully.
-
-
-    Increase in CASI is associated with an increase in final price revision. Controlling for the first price amendment,
-    A one standard deviation in CASI is associated with a X% final price revision.
-
-    The effect of CASI on final price revision diminishes as CASi increases.
-    A economically significant -0.46 on squared CASI suggests that IPOs which attract too much abnormal attention can experience lowered price revisions.
-
-
-    CASI_15day:
-    min: -3.59
-    mean: 0.49
-    std: 1.20
-    max: 8.83
-
-
-
-    In model (3), differentiating FPR w.r.t CASI gives the estimated incremental effect of CASI on final price revisions. A unit increase in CASI is associated with an increase of:
-    3.31 - 2*0.41*CASI
-
-    For the average firm with CASI = 0.5, this is 3.31 - 2*0.41*0.5 = 2.9% final price revision, controlling for price amendments and other IPO related variables.
-
-
-
-
-    Model (4):
-    Introducing interaction variables halves the economic significant of CASI as a standalone variable. Statistical significance also suffers, with t-stat reducing from 4.61 to 1.98--marginally significant at the 5% level.
-
-
-    Interactions:
-    CASI and sq(CASI) effects:
-        1.53 - 2*0.46 = 0.61
-
-    CASI X Pupdate_UP = 0.25
-
-
-    Pupdate_UP = 1.02. A 1 percent increase in filing price range is associated with a 1 percent increase in the final offer price. In other words, the first price update appears to be efficiently incorporated in the final offer price.
-
-
-    The effect of underwriter rank on final price revisions is indistinguishable from 0 across all models. The way IPOs are priced appear to follow a industry standard practice independent on underwriter rank.
-
-    """
 
 
 
@@ -479,33 +427,34 @@ def xls_final_revisions(days=15):
 ###################################################################
 
 
-if '__test_regressions__':
+testing_reg = 0
+if testing_reg:
 
+    days=15
     IOTKEY = 'IoT_{}day_CASI_weighted_finance'.format(days)
     # IOTKEY = 'IoT_{}day_CASI_news'.format(days)
     # IOTKEY = 'IoT_{}day_CASI_all'.format(days)
     ALLVAR = [
             'log(days_from_s1_to_listing)',
             # 'delay_in_price_update',
-            'number_of_price_updates_up',
-            'number_of_price_updates_down',
-            'underwriter_rank_avg',
+            # 'underwriter_rank_avg',
+            'underwriter_collective_rank',
             'VC',
-            # 'confidential_IPO',
+            'confidential_IPO',
             'Year',
             # 'FF49_industry',
             'share_overhang',
             'log(proceeds)',
             'EPS',
             'M3_indust_rets',
-            # 'M3_initial_returns', # 9
+            'M3_initial_returns', # 9
             'priceupdate_up',
             'priceupdate_down',
             IOTKEY,               # 13
             'np.square(%s)' % IOTKEY,
             '{}:{}'.format(IOTKEY, 'priceupdate_up'),
             # 'np.square({}):{}'.format(IOTKEY, 'priceupdate_up'),
-            # '{}:{}'.format(IOTKEY, 'priceupdate_down'),
+            '{}:{}'.format(IOTKEY, 'priceupdate_down'),
             # '{}:{}'.format(IOTKEY, 'VC'),
             # '{}:{}'.format(IOTKEY, 'delay_in_price_update'),
             # '{}:{}'.format('delay_in_price_update', 'priceupdate_up'),
@@ -519,19 +468,21 @@ if '__test_regressions__':
     rlm.summary()
 
 
+    df['pct_first_price_change_up'] = [x if x>0 else 0 for x in df['pct_first_price_change']]
+    df['pct_first_price_change_down'] = [x if x<0 else 0 for x in df['pct_first_price_change']]
+
+
 
     IOTKEY = 'IoT_{}day_CASI_weighted_finance'.format(days)
     # IOTKEY = 'IoT_{}day_CASI_news'.format(days)
     # IOTKEY = 'IoT_{}day_CASI_all'.format(days)
     ALLVAR = [
             'log(days_from_s1_to_listing)',
-            # 'delay_in_price_update',
-            # 'number_of_price_updates',
             'number_of_price_updates_up',
             'number_of_price_updates_down',
             'underwriter_rank_avg',
             'VC',
-            # 'confidential_IPO',
+            'confidential_IPO',
             'share_overhang',
             'log(proceeds)',
             # 'log(1 + sales)',
@@ -540,19 +491,20 @@ if '__test_regressions__':
             'EPS',
             'M3_indust_rets',
             'M3_initial_returns', # 9
-            'pct_final_revision_up',
-            'pct_final_revision_down',
+            'pct_first_price_change_up',
+            'pct_first_price_change_down',
+            # 'pct_final_revision_up',
+            # 'pct_final_revision_down',
             IOTKEY,               # 13
             'np.square(%s)' % IOTKEY,
-            '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
+            '%s:%s' % (IOTKEY, 'pct_first_price_change_up'),
+            '%s:%s' % (IOTKEY, 'pct_first_price_change_down'),
+            # '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
             # '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
-            # '%s:%s' % (IOTKEY, 'VC'),
-            # '%s:%s' % (IOTKEY, 'number_of_price_updates_up'),
-            # '%s:%s' % (IOTKEY, 'number_of_price_updates_down'),
         ]
 
     X = " + ".join(ALLVAR)
-    lm = smf.ols('close_return ~ ' + X, data=df).fit()
+    lm = smf.ols('open_return ~ ' + X, data=df).fit()
     rlm = lm.get_robustcov_results()
     rlm.summary()
 
@@ -791,6 +743,13 @@ def xls_price_updates():
 
 
 
+    """
+    delay_in_price_update measures the length of time left to subscribe in the IPO (expressed as a fraction of total time from initial pricing to listing).
+    This information is known at all times because the listing date is set ahead of time and common knowledge.
+
+    """
+
+
 
 
 
@@ -802,65 +761,56 @@ def initial_returns():
     ##############################################
     # Initial Returns regression
     # Interaction: CASI * Final_price_revision
-    controls = [
-
-            ]
-
-    ###############################################
-    # First price update regression
-
-    """
-    delay_in_price_update measures the length of time left to subscribe in the IPO (expressed as a fraction of total time from initial pricing to listing).
-    This information is known at all times because the listing date is set ahead of time and common knowledge.
-
-    """
 
 
-    ## THIS SETS THE XLS Variable Order
-    VARS = [
+    VORDER = [
         'Intercept',
         'CASI',
         'np.square(CASI)',
-        'CASI:VC',
+
+        'CASI:pct_first_price_change_up',
+        # 'CASI:pct_first_price_change_down',
+        'CASI:pct_final_revision_up',
+        # 'CASI:pct_final_revision_down',
+        'CASI:number_of_price_updates_up',
+        # 'CASI:number_of_price_updates_down',
+
+        'pct_first_price_change_up',
+        # 'pct_first_price_change_down',
+        'pct_final_revision_up',
+        # 'pct_final_revision_down',
+        'number_of_price_updates_up',
+        'number_of_price_updates_down',
+
         'log(days_from_s1_to_listing)',
         'underwriter_rank_avg',
         'VC',
-        'confidential_IPO',
         'share_overhang',
         'log(proceeds)',
-        'log(1 + sales)',
         'EPS',
         'M3_indust_rets',
         'M3_initial_returns',
         'Nobs',
         'Rsq',
     ]
+    VARS = VORDER
     VROW = dict(zip(VARS, [str(n) for n in range(4,100,2)]))
 
+    # df[['pct_final_revision_up','pct_first_price_change_up', 'number_of_price_updates_up']].corr()
 
 
-    ###############################################
-    # First price update regression
-
-    # dup = dfu[dfu['prange_change_first_price_update'].notnull()]
-    dup = dfu[dfu['size_of_first_price_update'].notnull()]
-
-
-    ALLVAR = [
-            'Year',
-            'log(days_from_s1_to_listing)',
-            'underwriter_rank_avg',
-            'VC',
-            'confidential_IPO',
-            'share_overhang',
-            'log(proceeds)',
-            'log(market_cap)',
-            'log(1+sales)',
-            'liab_over_assets',
-            'EPS',
-            'M3_indust_rets',
-            'M3_initial_returns', # 13
-            'delay_in_price_update', # 14
+    CONTROLS = [
+        'Year',
+        'log(days_from_s1_to_listing)',
+        'number_of_price_updates_up',
+        'number_of_price_updates_down',
+        'underwriter_rank_avg',
+        'VC',
+        'share_overhang',
+        'log(proceeds)',
+        'EPS',
+        'M3_indust_rets',
+        'M3_initial_returns', # 13
         ]
 
 
@@ -870,25 +820,80 @@ def initial_returns():
         require(lmtest)
         require(plm)
         source("clmclx.R")
-        dfR <- data.table::fread("df.csv", colClasses=c(cik="character", SIC="character", Year="factor"))""".split('\n')))
+        df <- data.table::fread("df.csv", colClasses=c(cik="character", SIC="character", Year="factor"))
+        df <- df[df$close_return < 200]
+        dfR <- df""".split('\n')))
 
+    clusterby = ('FF49_industry', 'Year')
+    # clusterby = 'FF49_industry'
+    days = 15
+    days = 30
+    IOTKEY = 'IoT_{days}day_CASI_weighted_finance'.format(days=days)
+    # IOTKEY = 'IoT_{days}day_CASI_all'.format(days=days)
+    # IOTKEY = 'IoT_{days}day_CASI_news'.format(days=days)
 
 
     # Fit controls only
-    for i, col in zip([13,14], 'CD'):
-        X = " + ".join(ALLVAR[:i])
-        lm = 'percent_first_price_update ~ ' + X
-        xls_empirics(lm, column=col, sheet='updates_CASI', cluster='FF49_industry')
+    col = 'C'
+    XVAR = [IOTKEY, 'np.square({})'.format(IOTKEY)]
+    X = " + ".join(XVAR + CONTROLS)
+    lm = 'close_return ~ ' + X
+    xls_empirics(lm, column=col, sheet='initial_returns'+str(days), cluster=clusterby)
+
+    col = 'D'
+    XVAR = ['pct_first_price_change_up', IOTKEY, 'np.square({})'.format(IOTKEY)]
+    X = " + ".join(XVAR + CONTROLS)
+    lm = 'close_return ~ ' + X
+    xls_empirics(lm, column=col, sheet='initial_returns'+str(days), cluster=clusterby)
+
+    col = 'E'
+    XVAR = ['pct_final_revision_up', IOTKEY, 'np.square({})'.format(IOTKEY)]
+    X = " + ".join(XVAR + CONTROLS)
+    lm = 'close_return ~ ' + X
+    xls_empirics(lm, column=col, sheet='initial_returns'+str(days), cluster=clusterby)
 
 
-    models = list(itertools.product([15,30], [2,3]))
-    for model, col in zip(models, 'FGIJ'):
-        days, i = model
-        IOTKEY = 'IoT_{days}day_CASI_weighted_finance'.format(days=days)
-        XVAR = [IOTKEY, 'np.square({})'.format(IOTKEY), '{}:{}'.format(IOTKEY, 'VC')]
-        X = " + ".join(ALLVAR + XVAR[:i])
-        lm = 'percent_first_price_update ~ ' + X
-        xls_empirics(lm, column=col, sheet='updates_CASI', cluster='FF49_industry')
+
+
+    col = 'G'
+    XVAR = [IOTKEY, 'np.square({})'.format(IOTKEY),
+    '%s:%s' % (IOTKEY, 'pct_first_price_change_up'),
+    # '%s:%s' % (IOTKEY, 'pct_first_price_change_down'),
+    'pct_first_price_change_up',
+    # 'pct_first_price_change_down',
+    ]
+    X = " + ".join(CONTROLS + XVAR[:i])
+    lm = 'close_return ~ ' + X
+    xls_empirics(lm, column=col, sheet='initial_returns'+str(days), cluster=clusterby)
+
+
+
+    col = 'H'
+    XVAR = [IOTKEY, 'np.square({})'.format(IOTKEY),
+    '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
+    # '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
+    'pct_final_revision_up',
+    # 'pct_final_revision_down',
+    ]
+    X = " + ".join(CONTROLS + XVAR[:i])
+    lm = 'close_return ~ ' + X
+    xls_empirics(lm, column=col, sheet='initial_returns'+str(days), cluster=clusterby)
+
+
+    col = 'I'
+    XVAR = [IOTKEY, 'np.square({})'.format(IOTKEY),
+    '%s:%s' % (IOTKEY, 'number_of_price_updates_up'),
+    # '%s:%s' % (IOTKEY, 'number_of_price_updates_down'),
+    'number_of_price_updates_up',
+    'number_of_price_updates_down',
+    ]
+    X = " + ".join(CONTROLS + XVAR[:i])
+    lm = 'close_return ~ ' + X
+    xls_empirics(lm, column=col, sheet='initial_returns'+str(days), cluster=clusterby)
+
+
+
+
 
 
 
@@ -910,41 +915,41 @@ def initial_returns():
 
 
 
-if "__regularization__":
-    ## Regularization - LASSO and Ridge regression
-    import patsy
-    y, x = patsy.dmatrices(Y + " ~ " + X, data=df)
-    from sklearn import linear_model
+# if "__regularization__":
+#     ## Regularization - LASSO and Ridge regression
+#     import patsy
+#     y, x = patsy.dmatrices(Y + " ~ " + X, data=df)
+#     from sklearn import linear_model
 
-    ridge = linear_model.Ridge(alpha=0.5)
-    ridge.fit(x,y)
-    list(zip(['intercept']+X.split('+'), ridge.coef_[0]))
+#     ridge = linear_model.Ridge(alpha=0.5)
+#     ridge.fit(x,y)
+#     list(zip(['intercept']+X.split('+'), ridge.coef_[0]))
 
 
-    lasso = linear_model.Lasso(alpha=0.5)
-    lasso.fit(x,y)
-    list(zip(['intercept']+X.split('+'), lasso.coef_))
+#     lasso = linear_model.Lasso(alpha=0.5)
+#     lasso.fit(x,y)
+#     list(zip(['intercept']+X.split('+'), lasso.coef_))
 
-    """ LASSO Coefs as a function of regularization
-    alphas = np.linspace(0,2,100)
-    coefs = []
-    for a in alphas:
-        lasso.set_params(alpha=a)
-        lasso.fit(x,y)
-        coefs.append(lasso.coef_)
+#     """ LASSO Coefs as a function of regularization
+#     alphas = np.linspace(0,2,100)
+#     coefs = []
+#     for a in alphas:
+#         lasso.set_params(alpha=a)
+#         lasso.fit(x,y)
+#         coefs.append(lasso.coef_)
 
-    ax = plt.gca()
-    ax.set_color_cycle(['b', 'r', 'g', 'c', 'k', 'y', 'm'])
+#     ax = plt.gca()
+#     ax.set_color_cycle(['b', 'r', 'g', 'c', 'k', 'y', 'm'])
 
-    ax.plot(alphas, coefs)
-    ax.set_xscale('log')
-    ax.set_xlim(ax.get_xlim()[::-1])  # reverse axis
-    plt.xlabel('alpha')
-    plt.ylabel('weights')
-    plt.title('Ridge coefficients as a function of the regularization')
-    plt.axis('tight')
-    plt.show()
-    """
+#     ax.plot(alphas, coefs)
+#     ax.set_xscale('log')
+#     ax.set_xlim(ax.get_xlim()[::-1])  # reverse axis
+#     plt.xlabel('alpha')
+#     plt.ylabel('weights')
+#     plt.title('Ridge coefficients as a function of the regularization')
+#     plt.axis('tight')
+#     plt.show()
+#     """
 
 
 
