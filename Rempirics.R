@@ -61,17 +61,17 @@ eq9 <- close_return ~ log(days_from_s1_to_listing) +
 	Year + EPS + M3_indust_rets + M3_initial_returns +
 	IOTKEY +
 	I(IOTKEY^2) +
-
-	pct_final_revision_up +
+	# FF49_industry +
+	# pct_final_revision_up +
 	# pct_final_revision_down +
-	# pct_first_price_change_up +
+	pct_first_price_change_up +
 	# pct_first_price_change_down +
 	number_of_price_updates_up +
 	number_of_price_updates_down +
 
-	IOTKEY:pct_final_revision_up
+	# IOTKEY:pct_final_revision_up
 	# IOTKEY:pct_final_revision_down
-	# IOTKEY:pct_first_price_change_up +
+	IOTKEY:pct_first_price_change_up
 	# IOTKEY:pct_first_price_change_down
 	# IOTKEY:number_of_price_updates_up +
 	# IOTKEY:number_of_price_updates_down
@@ -86,13 +86,6 @@ summary(m09)$r.squared
 
 
 
-
-# eq10 <- update(eq9, ~ . + IOTKEY:number_of_price_updates_up + IOTKEY:number_of_price_updates_down)
-# m10 <- lm(eq10, data=df)
-# clx(m10, 1, FF49_industry)
-# mclx(m10, 1, FF49_industry, underwriter_rank_single)
-# mclx(m10, 1, FF49_industry, Year)
-# summary(m10)$r.squared
 
 
 
@@ -110,36 +103,36 @@ summary(m09)$r.squared
 
 
 
-# QUANTILE REGRESSIONS
-require(quantreg)
-FRP <- percent_final_price_revision
-FRP <- pct_final_revision_up
-# FRP <- pct_final_revision_down
-IR <- close_return
+# # QUANTILE REGRESSIONS
+# require(quantreg)
+# FRP <- percent_final_price_revision
+# FRP <- pct_final_revision_up
+# # FRP <- pct_final_revision_down
+# IR <- close_return
 
-plotvar <- "IOTKEY"
-# plotvar <- "pct_final_revision_up:IOTKEY"
-plot(FRP, IR, cex=0.25, type="n", xlab=plotvar, ylab="Initial Returns (%)")
-points(FRP, IR, cex=0.5, col="blue")
-abline(rq(IR ~ FRP, tau=0.5), col="blue")
-abline(lm(IR ~ FRP), lty=2, col="red")
-# taus <- c(0.05, 0.10, 0.25, 0.75, 0.90, 0.95)
+# plotvar <- "IOTKEY"
+# # plotvar <- "pct_final_revision_up:IOTKEY"
+# plot(FRP, IR, cex=0.25, type="n", xlab=plotvar, ylab="Initial Returns (%)")
+# points(FRP, IR, cex=0.5, col="blue")
+# abline(rq(IR ~ FRP, tau=0.5), col="blue")
+# abline(lm(IR ~ FRP), lty=2, col="red")
+# # taus <- c(0.05, 0.10, 0.25, 0.75, 0.90, 0.95)
 
-taus <- c(0.4, 0.5, 0.6, 0.7, 0.8)
-get_variable <- function(model, varname) {
-	coefs <- model$coefficients
-	for(i in seq_along(1:length(coefs))) {
-		if(names(coefs[i]) == varname) {
-			return(i)
-		}
-	}
-}
+# taus <- seq(0.1, 0.9, 0.1)
+# get_variable <- function(model, varname) {
+# 	coefs <- model$coefficients
+# 	for(i in seq_along(1:length(coefs))) {
+# 		if(names(coefs[i]) == varname) {
+# 			return(i)
+# 		}
+# 	}
+# }
 
-for(i in seq_along(1:length(taus))) {
-	M <- rq(eq9, tau=taus[i])
-	coef <- M$coefficients
-	abline(coef[1], coef[get_variable(M, plotvar)], col="gray")
-}
+# for(i in seq_along(1:length(taus))) {
+# 	M <- rq(eq9, tau=taus[i])
+# 	coef <- M$coefficients
+# 	abline(coef[1], coef[get_variable(M, plotvar)], col="gray")
+# }
 
 
 
@@ -166,7 +159,6 @@ for(i in seq_along(1:length(taus))) {
 	cat('\n\n', paste("Tau:", taus[i]), '\n')
 	print(quantreg_print(i))
 }
-
 
 
 
