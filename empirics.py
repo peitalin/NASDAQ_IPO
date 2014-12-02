@@ -224,8 +224,6 @@ def xls_empirics(lm, column='C', sheet='15dayCASI', cluster=('FF49_industry', 'u
         return eq
 
 
-    # Range("C3:J3").value = ['(1)', '(2)', '(3)', '(4)',
-    #                         None, '(6)', '(7)', '(8)',]
     Range("{col}4:{col}60".format(col=column)).value = [[None]]*60
 
     if isinstance(lm, str):
@@ -233,16 +231,17 @@ def xls_empirics(lm, column='C', sheet='15dayCASI', cluster=('FF49_industry', 'u
         if 'np.square' in eq:
             eq = rpy_square_terms(eq)
 
-
         r("M <- lm({eq}, data=dfR)".format(eq=eq))
         r("src('clmclx.R')")
         if len(cluster) == 2:
             r("M_cluster <- mclx(M, 1, dfR$%s, dfR$%s)" % cluster)
-        elif len(cluster)== 1:
+        elif len(cluster) == 1 and "HC1" not in cluster:
             r("M_cluster <- clx(M, 1, dfR$%s)" % cluster)
+        elif len(cluster) == 1:
+            r('M_cluster <- coeftest(M, vcov=vcovHC(M, type="HC1"))')
         else:
-            # skip to normal linear model with HC1 standard errors
-            break
+            r('M_cluster <- summary(M)$coefficients')
+            cluster = "Standard Errors"
 
         varnames = r("names(M$coefficients)".format(eq=eq))
         varnames = [rpy_square_terms(v, Rpy=False) for v in varnames]
@@ -255,10 +254,13 @@ def xls_empirics(lm, column='C', sheet='15dayCASI', cluster=('FF49_industry', 'u
         Range('B' + str(int(VROW['Rsq'])-1)).value = 'R^2'
         Range(column + VROW['Nobs']).value = r("M$df.residual + M$rank")[0]
         Range(column + str(int(VROW['Rsq'])-1)).value = r("summary(M)$r.squared")[0]
+        Range(column + str(int(VROW['Rsq'])+1)).value = [cluster]
 
         write_coefs_tvals(varnames, coefs, tvals, pvals)
         return None
 
+
+    # Python statsmodels
     if not is_logit(lm):
         varnames = tuple(lm.params.keys())
         rlm = lm.get_robustcov_results()
@@ -772,20 +774,20 @@ def initial_returns():
         'np.square(CASI)',
 
         'CASI:pct_first_price_change_up',
-        # 'CASI:pct_first_price_change_down',
+        'CASI:pct_first_price_change_down',
         'CASI:pct_final_revision_up',
-        # 'CASI:pct_final_revision_down',
+        'CASI:pct_final_revision_down',
         'CASI:number_of_price_updates_up',
-        # 'CASI:number_of_price_updates_down',
+        'CASI:number_of_price_updates_down',
 
         'pct_first_price_change_up',
-        # 'pct_first_price_change_down',
+        'pct_first_price_change_down',
         'pct_final_revision_up',
-        # 'pct_final_revision_down',
+        'pct_final_revision_down',
         'number_of_price_updates_up',
         'number_of_price_updates_down',
 
-        # 'log(days_from_s1_to_listing)',
+        'log(days_from_s1_to_listing)',
         'underwriter_rank_avg',
         'VC',
         'share_overhang',
@@ -804,7 +806,7 @@ def initial_returns():
 
     CONTROLS = [
         'Year',
-        # 'log(days_from_s1_to_listing)',
+        'log(days_from_s1_to_listing)',
         'number_of_price_updates_up',
         'number_of_price_updates_down',
         'underwriter_rank_avg',
@@ -827,8 +829,10 @@ def initial_returns():
         df <- df[df$close_return < 200]
         dfR <- df""".split('\n')))
 
-    # clusterby = ('FF49_industry', 'Year')
-    clusterby = 'FF49_industry'
+    clusterby = ('FF49_industry', 'Year')
+    # clusterby = ('FF49_industry',)
+    # clusterby = ('HC1',)
+    clusterby = ''
     days = 15
     # days = 30
     IOTKEY = 'IoT_{days}day_CASI_weighted_finance'.format(days=days)
@@ -850,11 +854,11 @@ def initial_returns():
     col = 'E'
     XVAR = [IOTKEY, 'np.square({})'.format(IOTKEY),
     '%s:%s' % (IOTKEY, 'pct_first_price_change_up'),
-    # '%s:%s' % (IOTKEY, 'pct_first_price_change_down'),
+    '%s:%s' % (IOTKEY, 'pct_first_price_change_down'),
     'pct_first_price_change_up',
-    # 'pct_first_price_change_down',
+    'pct_first_price_change_down',
     ]
-    X = " + ".join(CONTROLS + XVAR[:i])
+    X = " + ".join(CONTROLS + XVAR)
     lm = 'close_return ~ ' + X
     xls_empirics(lm, column=col, sheet='initial_returns'+str(days), cluster=clusterby)
 
@@ -863,11 +867,11 @@ def initial_returns():
     col = 'F'
     XVAR = [IOTKEY, 'np.square({})'.format(IOTKEY),
     '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
-    # '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
+    '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
     'pct_final_revision_up',
-    # 'pct_final_revision_down',
+    'pct_final_revision_down',
     ]
-    X = " + ".join(CONTROLS + XVAR[:i])
+    X = " + ".join(CONTROLS + XVAR)
     lm = 'close_return ~ ' + X
     xls_empirics(lm, column=col, sheet='initial_returns'+str(days), cluster=clusterby)
 
@@ -875,11 +879,11 @@ def initial_returns():
     col = 'G'
     XVAR = [IOTKEY, 'np.square({})'.format(IOTKEY),
     '%s:%s' % (IOTKEY, 'number_of_price_updates_up'),
-    # '%s:%s' % (IOTKEY, 'number_of_price_updates_down'),
+    '%s:%s' % (IOTKEY, 'number_of_price_updates_down'),
     'number_of_price_updates_up',
-    # 'number_of_price_updates_down',
+    'number_of_price_updates_down',
     ]
-    X = " + ".join(CONTROLS + XVAR[:i])
+    X = " + ".join(CONTROLS + XVAR)
     lm = 'close_return ~ ' + X
     xls_empirics(lm, column=col, sheet='initial_returns'+str(days), cluster=clusterby)
 

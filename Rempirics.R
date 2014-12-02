@@ -52,34 +52,42 @@ summary(m06)$r.squared
 
 ### INITIAL RETURNS REGRESSIONS
 ################################
-IOTKEY <- df$IoT_15day_CASI_news
-IOTKEY <- df$IoT_15day_CASI_all
-IOTKEY <- df$IoT_15day_CASI_weighted_finance
+IOTKEY <- dfa$IoT_15day_CASI_news
+IOTKEY <- dfa$IoT_15day_CASI_all
+IOTKEY <- dfa$IoT_15day_CASI_weighted_finance
+
+dfa <- df[df$gtrends_name != "Baidu"]
+dfa <- df[df$gtrends_name != "Dicerna"]
+attach(dfa)
 
 eq9 <- close_return ~ log(days_from_s1_to_listing) +
 	underwriter_rank_avg + VC + share_overhang + log(proceeds) +
-	Year + EPS + M3_indust_rets + M3_initial_returns +
+	EPS + M3_indust_rets + M3_initial_returns +
+	Year +
+	foreign +
+	# FF49_industry +
 	IOTKEY +
 	I(IOTKEY^2) +
-	# FF49_industry +
-	# pct_final_revision_up +
-	# pct_final_revision_down +
-	pct_first_price_change_up +
+
+	pct_final_revision_up +
+	pct_final_revision_down +
+	# pct_first_price_change_up +
 	# pct_first_price_change_down +
 	number_of_price_updates_up +
 	number_of_price_updates_down +
 
-	# IOTKEY:pct_final_revision_up
-	# IOTKEY:pct_final_revision_down
-	IOTKEY:pct_first_price_change_up
+	IOTKEY:pct_final_revision_up
+	IOTKEY:pct_final_revision_down
+	# IOTKEY:pct_first_price_change_up +
 	# IOTKEY:pct_first_price_change_down
 	# IOTKEY:number_of_price_updates_up +
 	# IOTKEY:number_of_price_updates_down
 
-m09 <- lm(eq9, data=df)
-# coeftest(m07, vcov=vcovHC(m07, type="HC1"))
+m09 <- lm(eq9, data=dfa)
+# coeftest(m09, vcov=vcovHC(m09, type="HC1"))
 
 clx(m09, 1, FF49_industry)
+clx(m09, 1, underwriter_rank_single)
 # mclx(m09, 1, FF49_industry, underwriter_rank_single)
 mclx(m09, 1, FF49_industry, Year)
 summary(m09)$r.squared
