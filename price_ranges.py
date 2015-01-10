@@ -245,6 +245,7 @@ def parse_sentence(sentence):
 
 
 def get_price_range(filename):
+
     "Reads S-1 filings and parses for price ranges with parse_section() and parse_table() functions."
 
     with open(filename, encoding='latin-1') as f:
@@ -306,30 +307,6 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
 
     ciks = sorted(list(set(FINALJSON.keys())))
 
-    ciks = [
-    '1004724',
-    '1004724',
-    '1007019',
-    '1087294',
-    '1158863',
-    '1174266',
-    '1287151',
-    '1323648',
-    '1325702',
-    '1328208',
-    '1329365',
-    '1339729',
-    '1344376',
-    '1362614',
-    '1366340',
-    '1411342',
-    '1423242',
-    '1442620',
-    '1451951',
-    '1453820',
-    '1488039',
-    '1489077',]
-
     for i, cik in enumerate(ciks):
         if cik in done_ciks:
             continue
@@ -380,7 +357,7 @@ def extract_all_price_range(ciks, FINALJSON=FINALJSON):
 
 
 def print_pricerange(s):
-    "arg s: either firmname or cik. Returns price-ranges"
+    "args: either firmname or cik. Returns price-ranges"
 
     if not isinstance(s, str):
         s = str(s)
@@ -394,14 +371,19 @@ def print_pricerange(s):
     print("\n{A}> Filing Price Range: {B}: {C} <{A}".format(A='='*22, B=firmname(cik), C=cik))
     print("Date\t\tFormtype\tFile\t\t\t\tPrice Range")
     for v in filings:
-        filing_ashx = v[-2]
         price_range = v[-1][0]
         if price_range in ['NA', 'NAN']:
-            NA_filepath = os.path.join(BASEDIR, 'filings', cik, filing_ashx)
-            filesize = os.path.getsize(NA_filepath)
-            print("{}\t{}\t\t{}\t{}\t<= {:,} kbs".format(v[2], v[1], v[3], v[-1], round(filesize/1000)))
+            filing_ashx = v[-2]
+            # from IPython import embed; embed()
+            NA_filepath = glob.glob(os.path.join(BASEDIR, 'filings', cik, filing_ashx) + '*')[0]
+            NA_filesize = os.path.getsize(NA_filepath)
+            print("{}\t{}\t\t{}\t{}\t<= {:,} kbs".format(v[2], v[1], v[3], v[-1], round(NA_filesize/1000)))
         else:
-            print("{}\t{}\t\t{}\t{}".format(v[2], v[1], v[3], v[-1]))
+            try:
+                print("{}\t{}\t\t{}\t{}".format(v[2], v[1], v[3], v[-1]))
+            except FileNotFoundError:
+                print("{}\t{}\t\t{}\t{}".format(v[2], v[1], v[3] + '.html' , v[-1]))
+
     print("="*90+'\n')
 # '1467858' -> GM
 
@@ -416,6 +398,25 @@ def testfiles(cik):
 
 
 
+def run_tests():
+
+    cik = '1326801' # Facebook
+    cik = '1318605' # Tesla Motors
+    cik = '1594109' # Grubhub
+    cik = '1175685' # Bladelogic
+    cik = '1500435' # GoPro
+    cik = '1271024' # LinkedIn
+
+    # ciks = sorted(FINALJSON.keys())
+    ciks = ['1326801', '1318605', '1594109', '1175685', '1500435', '1271024']
+
+    for cik in ciks:
+        print("{}:{}".format(cik, firmname(cik)))
+        tf = testfiles(cik)
+        price_range = [get_price_range(f) for f in testfiles(cik)]
+        print_pricerange(cik)
+
+
 
 
 
@@ -426,20 +427,6 @@ if __name__=='__main__':
 
     # with open('full_json.txt', 'w') as f:
     #     f.write(json.dumps(FULLJSON, indent=4, sort_keys=True))
-
-
-    cik = '1326801' # Facebook
-    cik = '1318605' # Tesla Motors
-    cik = '1594109' # grubhub           -> 2 upwards price revisions
-    cik = '1117733' # cafepress         -> 1 upwards price revision
-    cik = '1167896' # nexttest systems  -> 1 downwards price revision
-    cik = '1168197' # liposcience       -> 2 downwards price revision
-    cik = '1169561' # commvault systems -> 1 upwards price revision
-    cik = '1169652' # channeladvisor    -> 1 upwards price revision
-    cik = '1296391' # tengion inc       -> 1 large downwards
-    cik = '1499934' # country-style
-    cik = '1468174' # hyatt hotels
-    cik = '1485538' # Ossen innovation -> good F-1 filing example
 
 
     # problem firms
@@ -458,31 +445,21 @@ if __name__=='__main__':
     # cik = '1361916' # ASIA TIME INC
 
 
+    cik = '1326801' # Facebook
+    cik = '1318605' # Tesla Motors
+    cik = '1594109' # Grubhub
     cik = '1175685' # Bladelogic
     cik = '1500435' # GoPro
     cik = '1271024' # LinkedIn
-    cik = '1276187' # Energy transfer equity
 
-    ciks = sorted(FINALJSON.keys())
+    # ciks = sorted(FINALJSON.keys())
+    ciks = ['1326801', '1318605', '1594109', '1175685', '1500435', '1271024']
 
-
-    # Units, ADRs, etc
-    # metadata[metadata['Issue Type Code'] != '0']
-    # FULLJSON ciks
-
-
-    # ciks = ['1071625', '1276187', '1334814', '1372000', '1379009', '1405197', '1408710', '1420850', '1574565']
-
-    ciks = ['0860413', '1070336', '1127393', '1131312', '1287668', '1290059', '1302176', '1302324', '1303942', '1308106', '1310313', '1332174', '1336249', '1337068', '1340282', '1347426', '1349892', '1353691', '1354730', '1361916', '1370433', '1370946', '1376227', '1376556', '1378239', '1379606', '1381668', '1382230', '1399521', '1401573', '1402902', '1410402', '1412203', '1434620', '1434621', '1492915', '1507385']
-
-    # ciks = list(inc.keys())
-
-    cik = '1276187' # Energy transfer equity
-    cik = '1004724' # ADCARE HEALTH SYSTEMS,
     print("{}:{}".format(cik, firmname(cik)))
     tf = testfiles(cik)
     price_range = [get_price_range(f) for f in testfiles(cik)]
     print_pricerange(cik)
+
 
 
     adr = {
