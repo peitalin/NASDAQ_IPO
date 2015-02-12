@@ -14,8 +14,6 @@ from pprint             import pprint
 from numpy              import log, median, sign
 from widgets            import as_cash, next_row, next_col
 
-
-
 IPO_DIR = os.path.join(os.path.expanduser("~"), "Data", "IPO")
 BASEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ",)
 FILEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ", "Filings")
@@ -23,25 +21,22 @@ FINALJSON = json.loads(open('final_json.txt').read())
 FULLJSON = json.loads(open('full_json.txt').read())
 
 
+class Tools(object):
+    "Misc IPO exploratory data analysis tools for ipy REPL use"
 
-if '__tools__':
-    def _vlookup_firms(D=FULLJSON):
-        ciks_conames = {cik:D[cik]['Company Overview']['Company Name'] for cik in D}
-        conames_ciks = {D[cik]['Company Overview']['Company Name']:cik for cik in D}
-        return ciks_conames, conames_ciks
+    def init(self, D=FULLJSON):
+        self.ciks_conames = {cik:D[cik]['Company Overview']['Company Name'] for cik in D}
+        self.conames_ciks = {D[cik]['Company Overview']['Company Name']:cik for cik in D}
 
-    _ciks_conames, _conames_ciks = _vlookup_firms()
+    def firmname(self, cik):
+        return self.ciks_conames[cik]
 
-    iprint = partial(print, end=' '*32 + '\r')
-
-    def firmname(cik):
-        return _ciks_conames[cik]
-
-    def get_cik(firm):
-        ciks = [k for k in _conames_ciks if k.lower().startswith(firm.lower())]
+    def get_cik(self, firm):
+        ciks = [k for k in self.conames_ciks if k.lower().startswith(firm.lower())]
         print("Found => {}".format(ciks))
-        return _conames_ciks[ciks[0]]
+        return self.conames_ciks[ciks[0]]
 
+    @staticmethod
     def aget(sdate):
         sdate = sdate if isinstance(sdate, str) else sdate.isoformat()
         if re.search(r'\d{1,2}[/-]\d{1,2}[/-]\d{4}', sdate):
@@ -49,6 +44,7 @@ if '__tools__':
         elif re.search(r'\d{4}[/-]\d{2}[/-]\d{2}', sdate):
             return arrow.get(sdate, 'YYYY-MM-DD') if '-' in sdate else arrow.get(sdate, 'YYYY/MM/DD')
 
+    @staticmethod
     def print_pricerange(s):
         "arg s: either firmname or cik. Returns price-ranges"
 
@@ -72,14 +68,20 @@ if '__tools__':
                 print("{}\t{}\t\t{}\t{}".format(v[2], v[1], v[3], v[-1]))
         print("="*90+'\n')
 
-    def abnormal_svi(df, window=15, category='all'):
-        return pd.read_csv("IoT/ASVI_{}day_{}.csv".format(window, category), dtype={'cik': object}).set_index('cik')
 
-        """
-        ASVI15 = abnormal_svi(df, window=15, category='weighted_finance')
-        ASVI30 = abnormal_svi(df, window=30, category='weighted_finance')
-        ASVI60 = abnormal_svi(df, window=60, category='weighted_finance')
-        """
+# if '__tools__':
+#     def _vlookup_firms(D=FULLJSON):
+#         ciks_conames = {cik:D[cik]['Company Overview']['Company Name'] for cik in D}
+#         conames_ciks = {D[cik]['Company Overview']['Company Name']:cik for cik in D}
+#         return ciks_conames, conames_ciks
+
+#     _ciks_conames, _conames_ciks = _vlookup_firms()
+
+
+#     def firmname(cik):
+#         return _ciks_conames[cik]
+
+
 
 
 
@@ -124,15 +126,15 @@ VNAME = {
 
 if __name__=='__main__':
     ciks = sorted(FINALJSON.keys())
-    cik = '1439404' # Zynga         # 8.6
-    cik = '1418091' # Twitter       # 7.4
-    cik = '1271024' # LinkedIn      # 9.6
-    cik = '1500435' # GoPro         # 8.1
-    cik = '1318605' # Tesla Motors  # 8
-    cik = '1326801' # Facebook      # 8.65
-    cik = '1564902' # SeaWorld      # 9.54
-    cikfb = '1326801' # Facebook
-    ciks1 = ['1439404', '1418091', '1271024', '1500435', '1318605', '1594109', '1326801', '1564902']
+    # cik = '1439404' # Zynga         # 8.6
+    # cik = '1418091' # Twitter       # 7.4
+    # cik = '1271024' # LinkedIn      # 9.6
+    # cik = '1500435' # GoPro         # 8.1
+    # cik = '1318605' # Tesla Motors  # 8
+    # cik = '1326801' # Facebook      # 8.65
+    # cik = '1564902' # SeaWorld      # 9.54
+    # cikfb = '1326801' # Facebook
+    # ciks1 = ['1439404', '1418091', '1271024', '1500435', '1318605', '1594109', '1326801', '1564902']
 
     iotkeys = ['gtrends_name', 'IoT_entity_type',
     'IoT_15day_CASI_all', 'IoT_30day_CASI_all', 'IoT_60day_CASI_all',
@@ -142,22 +144,19 @@ if __name__=='__main__':
     'IoT_30day_CASI_weighted_finance', 'IoT_60day_CASI_weighted_finance']
 
 
-
     df = pd.read_csv("df.csv", dtype={'cik':object, 'Year':object, 'SIC':object})
-    dfu = pd.read_csv("df_update.csv", dtype={'cik':object, 'Year':object, 'SIC':object})
-    dfl = pd.read_csv("dfl.csv", dtype={'cik':object, 'Year':object, 'SIC':object})
+    # dfu = pd.read_csv("df_update.csv", dtype={'cik':object, 'Year':object, 'SIC':object})
+    # dfl = pd.read_csv("dfl.csv", dtype={'cik':object, 'Year':object, 'SIC':object})
 
     df.set_index("cik", inplace=1)
-    dfu.set_index("cik", inplace=1)
-    dfl.set_index("cik", inplace=1)
+    # # dfu.set_index("cik", inplace=1)
+    # dfl.set_index("cik", inplace=1)
 
     dup = df[df['size_of_first_price_update'].notnull()]
     dnone = df[df['prange_change_first_price_update'].isnull()]
 
-
     # df['pct_first_price_change_up'] = [x if x>0 else 0 for x in df['pct_first_price_change']]
     # df['pct_first_price_change_down'] = [x if x<0 else 0 for x in df['pct_first_price_change']]
-
 
 
 
@@ -293,6 +292,7 @@ def xls_empirics(lm, column='C', sheet='15dayCASI', model_type='lm', cluster=('F
         if model_type=="lmer":
             varnames, coefs, pvals, tvals = lmer(eq)
             N_OBS = r("length(Summ$residuals)")[0]
+            AIC = r("Summ$AICtab")[0]
 
             ## GET RANDOM EFFECTS ESTIMATES - LMER
             _varcorr = r("as.data.frame(VarCorr(M))")
@@ -301,10 +301,12 @@ def xls_empirics(lm, column='C', sheet='15dayCASI', model_type='lm', cluster=('F
             rand = {x[1]:x[-1] for x in _random_effects}
             ranef = r("ranef(M)$FF49_industry")
 
+
         # Linear Mixed Model (nlme)
         if model_type=="lme":
             varnames, coefs, pvals, tvals = lme(eq)
             N_OBS = r("M$dims$N")[0]
+            AIC = r("summary(M)$AIC")[0]
 
             ## GET RANDOM EFFECTS ESTIMATES - LME
             _random_effects = dict(zip(r("rownames(VarCorr(M))"), r("VarCorr(M)[, 'StdDev']")))
@@ -321,10 +323,10 @@ def xls_empirics(lm, column='C', sheet='15dayCASI', model_type='lm', cluster=('F
 
 
         Range('B' + VROW['Nobs']).value = 'No. Obs'
-        Range('B' + str(int(VROW['LogLik'])-1)).value = 'Log Likelihood'
+        Range('B' + str(int(VROW['AIC'])-1)).value = 'AIC'
         # VROW['LogLik'] - 1 because VROW is double spaced for coefficients + tvalues.
         Range(column + VROW['Nobs']).value = N_OBS
-        Range(column + str(int(VROW['LogLik'])-1)).value = r("Summ$logLik")[0]
+        Range(column + str(int(VROW['AIC'])-1)).value = AIC
 
         # Random Effects
         Range('B' + VROW['RandEffects']).value = 'Random Effects StDev'
@@ -396,7 +398,7 @@ def xls_empirics(lm, column='C', sheet='15dayCASI', model_type='lm', cluster=('F
 
 
 
-def xls_final_revisions(days=15):
+def OLS_final_revisions(days=15):
 
 
     if '__variable_lookups__':
@@ -463,13 +465,9 @@ def xls_final_revisions(days=15):
 
         dfR <- data.table::fread("df.csv", colClasses=c(cik="character", SIC="character", Year="factor"))
 
-        ## dfR <- dfR[dfR$IoT_15day_CASI_weighted_finance != 0]
-
-
         #### CENTERING VARIABLES
         dfR$IoT_15day_CASI_weighted_finance <- dfR$IoT_15day_CASI_weighted_finance - mean(dfR$IoT_15day_CASI_weighted_finance)
         dfR$IoT_30day_CASI_weighted_finance <- dfR$IoT_30day_CASI_weighted_finance - mean(dfR$IoT_30day_CASI_weighted_finance)
-
 
         dfR$IoT_15day_CASI_all <- dfR$IoT_15day_CASI_all - mean(dfR$IoT_15day_CASI_all)
         dfR$IoT_30day_CASI_all <- dfR$IoT_30day_CASI_all - mean(dfR$IoT_30day_CASI_all)
@@ -558,7 +556,7 @@ def xls_final_revisions(days=15):
 
 
 
-def initial_returns():
+def OLS_initial_returns():
 
     ##############################################
     # Initial Returns regression
@@ -705,9 +703,7 @@ def initial_returns():
 
 
 
-
-
-def Hierarchical_linear_model_initial_returns():
+def HLM_initial_returns():
 
 
     VORDER = [
@@ -733,7 +729,7 @@ def Hierarchical_linear_model_initial_returns():
         'M3_indust_rets',
         'M3_initial_returns',
         'Nobs',
-        'LogLik',
+        'AIC',
         'RandEffects'
     ]
     VARS = VORDER
@@ -798,7 +794,7 @@ def Hierarchical_linear_model_initial_returns():
     xls_empirics(lm, column=col, sheet='mixed_model', model_type='lmer')
 
 
-    # Varying intercept + IOTKEY slope
+    # Varying IOTKEY slope
     col = 'F'
     XVAR = [
             IOTKEY,
