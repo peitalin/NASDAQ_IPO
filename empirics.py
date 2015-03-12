@@ -24,7 +24,7 @@ FULLJSON = json.loads(open('full_json.txt').read())
 class Tools(object):
     "Misc IPO exploratory data analysis tools for ipy REPL use"
 
-    def init(self, D=FULLJSON):
+    def __init__(self, D=FULLJSON):
         self.ciks_conames = {cik:D[cik]['Company Overview']['Company Name'] for cik in D}
         self.conames_ciks = {D[cik]['Company Overview']['Company Name']:cik for cik in D}
 
@@ -69,19 +69,7 @@ class Tools(object):
         print("="*90+'\n')
 
 
-# if '__tools__':
-#     def _vlookup_firms(D=FULLJSON):
-#         ciks_conames = {cik:D[cik]['Company Overview']['Company Name'] for cik in D}
-#         conames_ciks = {D[cik]['Company Overview']['Company Name']:cik for cik in D}
-#         return ciks_conames, conames_ciks
-
-#     _ciks_conames, _conames_ciks = _vlookup_firms()
-
-
-#     def firmname(cik):
-#         return _ciks_conames[cik]
-
-
+T = Tools()
 
 
 
@@ -421,6 +409,7 @@ def OLS_final_revisions(days=15):
             'media_1st_pricing',
             'share_overhang',
             'log(proceeds)',
+            'log(1 + sales)',
             'EPS',
             'M3_indust_rets',
             'M3_initial_returns',
@@ -440,6 +429,7 @@ def OLS_final_revisions(days=15):
             'media_1st_pricing',
             'share_overhang',
             'log(proceeds)',
+            'log(1 + sales)',
             'EPS',
             'M3_indust_rets',
             'M3_initial_returns',
@@ -501,6 +491,7 @@ def OLS_final_revisions(days=15):
             'media_1st_pricing',
             'share_overhang',
             'log(proceeds)',
+            'log(1 + sales)',
             'EPS',
             'M3_indust_rets',
             'M3_initial_returns',
@@ -533,6 +524,7 @@ def OLS_final_revisions(days=15):
             'media_1st_pricing',
             'share_overhang',
             'log(proceeds)',
+            'log(1 + sales)',
             'EPS',
             'M3_indust_rets',
             'M3_initial_returns',
@@ -569,16 +561,17 @@ def OLS_initial_returns():
         'np.square(CASI)',
 
         'CASI:priceupdate_up',
-        # 'CASI:priceupdate_down',
+        'CASI:priceupdate_down',
+        'priceupdate_up',
+        'priceupdate_down',
+
         'CASI:pct_final_revision_up',
-        # 'CASI:pct_final_revision_down',
+        'CASI:pct_final_revision_down',
+        'pct_final_revision_up',
+        'pct_final_revision_down',
+
         # 'CASI:number_of_price_updates_up',
         # 'CASI:number_of_price_updates_down',
-
-        'priceupdate_up',
-        # 'priceupdate_down',
-        'pct_final_revision_up',
-        # 'pct_final_revision_down',
         'number_of_price_updates_up',
         'number_of_price_updates_down',
 
@@ -589,6 +582,7 @@ def OLS_initial_returns():
         'media_listing',
         'share_overhang',
         'log(proceeds)',
+        'log(1 + sales)',
         'EPS',
         'M3_indust_rets',
         'M3_initial_returns',
@@ -610,6 +604,7 @@ def OLS_initial_returns():
         'VC',
         'share_overhang',
         'log(proceeds)',
+        'log(1 + sales)',
         'confidential_IPO',
         'media_listing',
         'EPS',
@@ -663,6 +658,7 @@ def OLS_initial_returns():
     col = 'D'
     XVAR = [
     'pct_final_revision_up',
+    'pct_final_revision_down',
     IOTKEY,
     'np.square({})'.format(IOTKEY)
     ]
@@ -675,9 +671,9 @@ def OLS_initial_returns():
     XVAR = [IOTKEY,
     'np.square({})'.format(IOTKEY),
     '%s:%s' % (IOTKEY, 'priceupdate_up'),
-    # '%s:%s' % (IOTKEY, 'priceupdate_down'),
+    '%s:%s' % (IOTKEY, 'priceupdate_down'),
     'priceupdate_up',
-    # 'priceupdate_down',
+    'priceupdate_down',
     ]
     X = " + ".join(CONTROLS + XVAR)
     lm = 'close_return ~ ' + X
@@ -688,9 +684,9 @@ def OLS_initial_returns():
     XVAR = [IOTKEY,
     'np.square({})'.format(IOTKEY),
     '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
-    # '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
+    '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
     'pct_final_revision_up',
-    # 'pct_final_revision_down',
+    'pct_final_revision_down',
     ]
     X = " + ".join(CONTROLS + XVAR)
     lm = 'close_return ~ ' + X
@@ -710,11 +706,17 @@ def HLM_initial_returns():
         '(Intercept)',
         'CASI',
         'I(CASI^2)',
-        # 'CASI:priceupdate_up',
-        'CASI:pct_final_revision_up',
 
+        # 'CASI:priceupdate_up',
+        # 'CASI:priceupdate_down',
         # 'priceupdate_up',
+        # 'priceupdate_down',
+
+        'CASI:pct_final_revision_up',
+        'CASI:pct_final_revision_down',
         'pct_final_revision_up',
+        'pct_final_revision_down',
+
         'number_of_price_updates_up',
         'number_of_price_updates_down',
 
@@ -725,6 +727,7 @@ def HLM_initial_returns():
         'media_listing',
         'share_overhang',
         'log(proceeds)',
+        'log(1 + sales)',
         'EPS',
         'M3_indust_rets',
         'M3_initial_returns',
@@ -745,6 +748,7 @@ def HLM_initial_returns():
         'VC',
         'share_overhang',
         'log(proceeds)',
+        'log(1 + sales)',
         'confidential_IPO',
         'media_listing',
         'EPS',
@@ -787,7 +791,9 @@ def HLM_initial_returns():
             IOTKEY,
             'np.square({})'.format(IOTKEY),
             '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
+            '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
             'pct_final_revision_up',
+            'pct_final_revision_down',
             ]
     X = " + ".join(XVAR + CONTROLS)
     lm = 'close_return ~ ' + X + ' + (1 | FF49_industry)'
@@ -800,7 +806,9 @@ def HLM_initial_returns():
             IOTKEY,
             'np.square({})'.format(IOTKEY),
             '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
+            '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
             'pct_final_revision_up',
+            'pct_final_revision_down',
             ]
     X = " + ".join(XVAR + CONTROLS)
     lm = 'close_return ~ ' + X + ' + ({} - 1 | FF49_industry)'.format(IOTKEY)
@@ -813,25 +821,29 @@ def HLM_initial_returns():
             IOTKEY,
             'np.square({})'.format(IOTKEY),
             '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
+            '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
             'pct_final_revision_up',
+            'pct_final_revision_down',
             ]
     X = " + ".join(XVAR + CONTROLS)
     lm = 'close_return ~ ' + X + ' + (1 + {} | FF49_industry)'.format(IOTKEY)
     xls_empirics(lm, column=col, sheet='mixed_model', model_type='lmer')
 
 
-    # Varying intercept + pct_final_revision_up slope
-    col = 'K'
-    XVAR = [
-            IOTKEY,
-            'np.square({})'.format(IOTKEY),
-            '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
-            'pct_final_revision_up',
-            ]
-    X = " + ".join(XVAR + CONTROLS)
+    # # Varying intercept + pct_final_revision_up slope
+    # col = 'K'
+    # XVAR = [
+    #         IOTKEY,
+    #         'np.square({})'.format(IOTKEY),
+    #         '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
+    #         '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
+    #         'pct_final_revision_up',
+    #         'pct_final_revision_down',
+    #         ]
+    # X = " + ".join(XVAR + CONTROLS)
 
-    lm = 'close_return ~ ' + X + ', random = list(~ 1 | FF49_industry, ~ {} | FF49_industry)'.format('pct_final_revision_up')
-    xls_empirics(lm, column=col, sheet='mixed_model', model_type='lme')
+    # lm = 'close_return ~ ' + X + ', random = list(~ 1 | FF49_industry, ~ {} | FF49_industry)'.format('pct_final_revision_up')
+    # xls_empirics(lm, column=col, sheet='mixed_model', model_type='lme')
 
 
 
@@ -882,6 +894,7 @@ def corrmatrix():
     df['CASIxP_30'] =  (CASI30 - CASI30.mean()) * (P - P.mean())
     df['CASIxFRP_30'] = (CASI30 - CASI30.mean()) * (FRP - FRP.mean())
 
+    df['log(1+sales)'] = log(df.sales + 1)
 
     design_vars = [
         'IoT_15day_CASI_weighted_finance',
@@ -897,6 +910,7 @@ def corrmatrix():
         'underwriter_rank_avg',
         'share_overhang',
         'log(proceeds)',
+        'log(1+sales)',
         'log(days_from_s1_to_listing)',
         'confidential_IPO',
         'media_listing',
@@ -974,7 +988,7 @@ if testing_reg:
             'confidential_IPO',
             'share_overhang',
             'log(proceeds)',
-            # 'log(1 + sales)',
+            'log(1 + sales)',
             # 'FF49_industry',
             'Year',
             'EPS',
@@ -1016,7 +1030,7 @@ if testing_reg:
 
 
     # dup = dfu[dfu['prange_change_first_price_update'].notnull()]
-    dup = dfu[dfu['size_of_first_price_update'].notnull()]
+    dup = df[df['size_of_first_price_update'].notnull()]
 
     IOTKEY = 'IoT_{}day_CASI_weighted_finance'.format(days)
     ALLVAR = [
@@ -1028,7 +1042,7 @@ if testing_reg:
             'share_overhang',
             'log(proceeds)',
             'log(market_cap)',
-            'log(1+sales)',
+            'log(1 + sales)',
             'liab_over_assets',
             'EPS',
             'M3_indust_rets',
@@ -1040,10 +1054,6 @@ if testing_reg:
         ]
 
     X = " + ".join(ALLVAR)
-    lm = smf.ols('percent_first_price_update ~ ' + X, data=dup).fit()
-    rlm = lm.get_robustcov_results()
-    rlm.summary()
-
     # 0: No amend
     # 1: upwards amend
     # 2: downwards amend
@@ -1179,7 +1189,7 @@ def xls_price_updates():
             'share_overhang',
             'log(proceeds)',
             'log(market_cap)',
-            'log(1+sales)',
+            'log(1 + sales)',
             'liab_over_assets',
             'EPS',
             'M3_indust_rets',

@@ -1,96 +1,86 @@
 
 require(sandwich)
 require(lmtest)
-require(quantreg)
 require(plm)
+require(nlme)
 source("clmclx.R")
-
 
 df <- data.table::fread("df.csv", colClasses=c(cik="character", SIC="character", Year="factor"))
 dfu <- data.table::fread("df_update.csv", colClasses=c(cik="character", SIC="character", Year="factor"))
-attach(df)
+
+getVariance <- function(sigma) { sigma^2 }
+
+getIOTKEY <- function(iotkey, df) {
+    cat("Demeaned IOTKEY\n")
+    df[[iotkey]] - mean(df[[iotkey]])
+}
 
 
-### Final Price Revision Regressions
-## Control Variables
-eq <- percent_final_price_revision ~ log(days_from_s1_to_listing) +
-				underwriter_rank_avg +
-				VC +
-				number_of_price_updates_up +
-				number_of_price_updates_down +
-				Year +
-				share_overhang +
-				log(proceeds) +
-				EPS +
-				M3_indust_rets +
-				M3_initial_returns
-
-m01 <- lm(eq, data=df)
-eq <- update(eq, ~ . + priceupdate_up + priceupdate_down)
-m03 <- lm(eq, data=df)
-
-
-# Main independent variable
-# IOTKEY <- df$IoT_30day_CASI_weighted_finance
-IOTKEY <- df$IoT_15day_CASI_weighted_finance
-# IOTKEY <- df$IoT_30day_CASI_news
-# IOTKEY <- df$IoT_15day_CASI_news
-
-eq4 <- update(eq, ~ . + IOTKEY + I(IOTKEY**2))
-m04 <- lm(eq4, data=df)
-
-eq5 <- update(eq4, ~ . + IOTKEY:priceupdate_up + IOTKEY:priceupdate_down)
-m05 <- lm(eq5, data=df)
-eq6 <- update(eq5, ~ . + IOTKEY:VC)
-m06 <- lm(eq6, data=df)
-
-# coeftest(m06, vcov=vcovHC(m06, type="HC1"))
-clx(m06, 1, FF49_industry)
-mclx(m06, 1, FF49_industry, underwriter_rank_single)
-summary(m06)$r.squared
-
-
-### INITIAL RETURNS REGRESSIONS
 ################################
-IOTKEY <- dfa$IoT_15day_CASI_news
-IOTKEY <- dfa$IoT_15day_CASI_all
-IOTKEY <- dfa$IoT_15day_CASI_weighted_finance
+INITIAL_RETURNS_REGRESSIONS <- function() {}
+################################
 
-dfa <- df[df$gtrends_name != "Baidu"]
-dfa <- df[df$gtrends_name != "Dicerna"]
+dfa <- df[df$close_return < 200]
+# Remove Baidu and Dicerna
 attach(dfa)
 
+
+# IOTKEY <- getIOTKEY("IoT_15day_CASI_news", dfa)
+# IOTKEY <- getIOTKEY("IoT_15day_CASI_all", dfa)
+IOTKEY <- getIOTKEY("IoT_15day_CASI_weighted_finance", dfa)
+
+
+PRICE_SIGNAL <- priceupdate_up
+PRICE_SIGNAL.type <- "priceupdate_up"
+PRICE_SIGNAL <- pct_final_revision_up
+PRICE_SIGNAL.type <- "pct_final_revision_up"
+
 eq9 <- close_return ~ log(days_from_s1_to_listing) +
-	underwriter_rank_avg + VC + share_overhang + log(proceeds) +
-	EPS + M3_indust_rets + M3_initial_returns +
-	Year +
-	foreign +
-	# FF49_industry +
-	IOTKEY +
-	I(IOTKEY^2) +
+    underwriter_rank_avg + VC + share_overhang + log(proceeds) +
+    EPS + log(1+sales) +
+    M3_indust_rets + M3_initial_returns +
+    Year +
+    confidential_IPO +
+    # foreign +
+    # FF49_industry +
+    media_listing +
+    IOTKEY +
+    I(IOTKEY^2) +
+    number_of_price_updates_up +
+    number_of_price_updates_down +
+    PRICE_SIGNAL +
+    IOTKEY:PRICE_SIGNAL
 
-	pct_final_revision_up +
-	pct_final_revision_down +
-	# pct_first_price_change_up +
-	# pct_first_price_change_down +
-	number_of_price_updates_up +
-	number_of_price_updates_down +
-
-	IOTKEY:pct_final_revision_up
-	IOTKEY:pct_final_revision_down
-	# IOTKEY:pct_first_price_change_up +
-	# IOTKEY:pct_first_price_change_down
-	# IOTKEY:number_of_price_updates_up +
-	# IOTKEY:number_of_price_updates_down
-
+# ####### Cluster Robust OLS
 m09 <- lm(eq9, data=dfa)
-# coeftest(m09, vcov=vcovHC(m09, type="HC1"))
+# # coeftest(m09, vcov=vcovHC(m09, type="HC1"))
 
 clx(m09, 1, FF49_industry)
-clx(m09, 1, underwriter_rank_single)
-# mclx(m09, 1, FF49_industry, underwriter_rank_single)
-mclx(m09, 1, FF49_industry, Year)
-summary(m09)$r.squared
+# # clx(m09, 1, underwriter_rank_single)
+# # mclx(m09, 1, FF49_industry, Year)
+# summary(m09)$r.squared
+
+
+### Hierarchical Linear Models
+
+m9.lme1 <- lme(eq9, random = ~ 1 | FF49_industry)
+# m9.lme2 <- lme(eq9, random = list(~ 1 | FF49_industry, ~ M3_initial_returns | FF49_industry))
+# m9.lme3 <- lme(eq9, random = list(~ 1 | FF49_industry, ~ PRICE_SIGNAL | FF49_industry))
+# m9.lme4 <- lme(eq9, random = list(~ 1 | FF49_industry, ~ IOTKEY | FF49_industry), method="ML")
+
+
+require(lme4)
+library(lmerTest)
+m9.lmer1 <- lmer(update(eq9, ~ . + (1 | FF49_industry)))
+m9.lmer2 <- lmer(update(eq9, ~ . + (1 + M3_initial_returns | FF49_industry)))
+m9.lmer4 <- lmer(update(eq9, ~ . + (1 + IOTKEY | FF49_industry)))
+
+summary(m9.lme1)
+summary(m9.lmer1)
+summary(m9.lmer2)
+summary(m9.lmer4)
+
+print(PRICE_SIGNAL.type)
 
 
 
@@ -98,98 +88,190 @@ summary(m09)$r.squared
 
 
 
-############ PRICE UPDATE REG
-# IOTKEY <- df$IoT_15day_CASI_news
-# IOTKEY <- df$IoT_15day_CASI_weighted_finance
-# dup <- df[!is.na(df$size_of_first_price_update)]
-# pupdate_eq1 <-  "percent_first_price_update ~ Year + log(days_from_s1_to_listing) + underwriter_rank_avg + VC + confidential_IPO + share_overhang + log(proceeds) + log(market_cap) + log(1+sales) + liab_over_assets + EPS + M3_indust_rets + M3_initial_returns + delay_in_price_update + IOTKEY + I(IOTKEY^2) + IOTKEY:VC"
-# p01 <- lm(pupdate_eq1, data=dup)
-# clx(p01, 1, dup$FF49_industry)
-# mclx(p01, 1, dup$FF49_industry, dup$underwriter_rank_single)
+################################
+FRP_REGRESSIONS <- function(){}
+################################
+dfa <- dfu
+# dfa <- df
+dfa <- dfu[df$close_return < 200]
+attach(dfa)
+
+# IOTKEY <- getIOTKEY("IoT_15day_CASI_news", dfa)
+# IOTKEY <- getIOTKEY("IoT_15day_CASI_all", dfa)
+IOTKEY <- getIOTKEY("IoT_15day_CASI_weighted_finance", dfa)
+
+
+PRICE_SIGNAL <- priceupdate_up
+
+eq1 <- percent_final_price_revision ~
+    log(days_from_s1_to_listing) +
+    underwriter_rank_avg + VC + share_overhang +
+    log(proceeds) + log(1+sales) + EPS +
+    M3_indust_rets + M3_initial_returns +
+    Year +
+    confidential_IPO +
+    # foreign +
+    media_listing +
+    IOTKEY +
+    I(IOTKEY^2) +
+    PRICE_SIGNAL +
+    IOTKEY:PRICE_SIGNAL
+
+# ####### Cluster Robust OLS
+m1 <- lm(eq1, data=dfa)
+clx(m1, 1, FF49_industry)
+
+
+require(lme4)
+library(lmerTest)
+### Hierarchical Linear Model
+m1.lme1 <- lme(eq1, random = ~ 1 | FF49_industry)
+
+m1.lmer1 <- lmer(update(eq1, ~ . + (1 | FF49_industry)))
+m1.lmer4 <- lmer(update(eq1, ~ . + (1 + IOTKEY | FF49_industry)))
+
+# summary(m1.lme1)
+# ranef(m1.lme)
+
+summary(m1.lmer1)
+summary(m1.lmer4)
+
+print(PRICE_SIGNAL.type)
+
+
+
+
+################################
+TIMING_PRICE_UPDATE_REGRESSIONS <- function(){}
+################################
+dfa <- dfu
+# dfa <- df
+# dfa <- dfu[df$close_return < 200]
+dfa <- dfu[df$delay_in_price_update != 1]
+attach(dfa)
+
+# IOTKEY <- getIOTKEY("IoT_15day_CASI_news", dfa)
+# IOTKEY <- getIOTKEY("IoT_15day_CASI_all", dfa)
+IOTKEY <- getIOTKEY("IoT_15day_CASI_weighted_finance", dfa)
+
+
+eq2 <- percent_first_price_update ~
+    log(days_from_s1_to_listing) +
+    delay_in_price_update +
+    underwriter_rank_avg + VC + share_overhang +
+    log(proceeds) + log(1+sales) + EPS +
+    M3_indust_rets + M3_initial_returns +
+    Year +
+    confidential_IPO +
+    # foreign +
+    media_listing +
+    IOTKEY +
+    I(IOTKEY^2)
+
+
+# ####### Cluster Robust OLS
+m2 <- lm(eq2, data=dfa)
+clx(m2, 1, FF49_industry)
+
+
+require(lme4)
+library(lmerTest)
+### Hierarchical Linear Model
+m2.lme1 <- lme(eq2, random = ~ 1 | FF49_industry)
+
+m2.lmer1 <- lmer(update(eq2, ~ . + (1 | FF49_industry)))
+m2.lmer4 <- lmer(update(eq2, ~ . + (1 + IOTKEY | FF49_industry)))
+
+# summary(m1.lme1)
+# ranef(m1.lme)
+
+summary(m2.lmer1)
+summary(m2.lmer4)
 
 
 
 
 
-# # QUANTILE REGRESSIONS
-# require(quantreg)
-# FRP <- percent_final_price_revision
-# FRP <- pct_final_revision_up
-# # FRP <- pct_final_revision_down
-# IR <- close_return
+################################
+TIMING_FPR_REGRESSIONS <- function(){}
+################################
+# dfa <- dfu
+dfa <- df[(df$close_return < 200) & (df$delay_in_price_update < 1)]
+# dfa <- df[df$close_return < 200]
+# dfa <- df[df$delay_in_price_update != 1]
+attach(dfa)
 
-# plotvar <- "IOTKEY"
-# # plotvar <- "pct_final_revision_up:IOTKEY"
-# plot(FRP, IR, cex=0.25, type="n", xlab=plotvar, ylab="Initial Returns (%)")
-# points(FRP, IR, cex=0.5, col="blue")
-# abline(rq(IR ~ FRP, tau=0.5), col="blue")
-# abline(lm(IR ~ FRP), lty=2, col="red")
-# # taus <- c(0.05, 0.10, 0.25, 0.75, 0.90, 0.95)
+# IOTKEY <- getIOTKEY("IoT_15day_CASI_news", dfa)
+# IOTKEY <- getIOTKEY("IoT_15day_CASI_all", dfa)
+IOTKEY <- getIOTKEY("IoT_15day_CASI_weighted_finance", dfa)
 
-# taus <- seq(0.1, 0.9, 0.1)
-# get_variable <- function(model, varname) {
-# 	coefs <- model$coefficients
-# 	for(i in seq_along(1:length(coefs))) {
-# 		if(names(coefs[i]) == varname) {
-# 			return(i)
-# 		}
-# 	}
-# }
+PRICE_SIGNAL <- pct_final_revision_up
+DEPVAR <- close_return
 
-# for(i in seq_along(1:length(taus))) {
-# 	M <- rq(eq9, tau=taus[i])
-# 	coef <- M$coefficients
-# 	abline(coef[1], coef[get_variable(M, plotvar)], col="gray")
-# }
+# PRICE_SIGNAL <- priceupdate_up
+# DEPVAR <- percent_final_price_revision
 
-
-
-
-rqeq <- close_return ~ log(days_from_s1_to_listing) +
-	underwriter_rank_avg + VC + share_overhang + log(proceeds) +
-	Year + EPS + M3_indust_rets + M3_initial_returns
-
-rqeq1 <- update(rqeq, ~ . + IOTKEY + I(IOTKEY^2) + number_of_price_updates_up + number_of_price_updates_down)
-rqeq2 <- update(rqeq1, ~ . + pct_final_revision_up + pct_final_revision_up:IOTKEY)
-rqeq2 <- update(rqeq1, ~ . + pct_first_price_change_up + pct_first_price_change_up:IOTKEY)
-# rqeq2 <- update(rqeq1, ~ . + number_of_price_updates_up:IOTKEY)
-taus <- c(0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90)
-taus <- seq(0.05, 0.95, 0.05)
+eq3 <- DEPVAR ~
+    log(days_from_s1_to_listing) +
+    delay_in_price_update +
+    underwriter_rank_avg + VC + share_overhang +
+    log(proceeds) + log(1+sales) + EPS +
+    M3_indust_rets + M3_initial_returns +
+    Year +
+    confidential_IPO +
+    # foreign +
+    media_listing +
+    IOTKEY +
+    I(IOTKEY^2) +
+    PRICE_SIGNAL +
+    IOTKEY:PRICE_SIGNAL
 
 
-quantreg_print <- function(i, last=1) {
-	qr <- rq(rqeq2, tau=taus[i])
-	tail(summary(qr)$coefficients, last)
-}
+# ####### Cluster Robust OLS
+m3 <- lm(eq3, data=dfa)
+clx(m3, 1, FF49_industry)
 
 
-for(i in seq_along(1:length(taus))) {
-	cat('\n\n', paste("Tau:", taus[i]), '\n')
-	print(quantreg_print(i))
-}
+require(lme4)
+library(lmerTest)
+### Hierarchical Linear Model
+
+m3.lmer1 <- lmer(update(eq3, ~ . + (1 | FF49_industry)))
+m3.lmer4 <- lmer(update(eq3, ~ . + (1 + IOTKEY | FF49_industry)))
+
+summary(m3.lmer1)
+summary(m3.lmer4)
 
 
 
+# ############### SURVIVAL REG
+# # dfa <- dfu
+# dfa <- df[(df$close_return < 200) & (df$amendment != 0)]
+# # dfa <- df[df$close_return < 200]
+# # dfa <- df[df$delay_in_price_update != 1]
+# dfa$amends <- sapply(dfa$amendment, function(x) { ifelse(x==-1, 0, 1) })
+# attach(dfa)
 
-# require(survival)
-# Y <- Surv(df$days_to_first_price_change)
-# formul2 <- with(dfu,
-# 			(Y ~ underwriter_rank_avg + VC +
-# 			share_overhang +
-# 			log(proceeds) +
-# 			log(market_cap) +
-# 			liab_over_assets +
-# 			EPS +
-# 			M3_indust_rets +
-# 			M3_initial_returns +
-# 			# priceupdate_up + priceupdate_down + prange_change_plus +
-# 			# delay_in_price_update + log(1 + days_from_s1_to_listing) +
-# 			dfu$IoT_15day_CASI_weighted_finance))
-# 			# IOTKEY * priceupdate_up +
-# 			# IOTKEY * priceupdate_down +
-# 			# IOTKEY * prange_change_plus +
-# 			# IOTKEY * log(1 + days_to_first_price_change) +
-# 			# IOTKEY * log(1 + days_from_s1_to_listing) +
-# 			# IOTKEY * delay_in_price_update))
-# m12 <- coxph(formul2)
+
+# library(mlogit)
+
+# ddata <- mlogit.data(df, id="cik", shape="wide", choice="amendment")
+
+# eq5 <- amends ~
+#     underwriter_rank_avg + VC + share_overhang +
+#     log(proceeds) + log(1+sales) + log(market_cap) +
+#     liab_over_assets + EPS +
+#     M3_indust_rets + M3_initial_returns +
+#     delay_in_price_update + log(days_from_s1_to_listing) +
+#     IoT_15day_CASI_weighted_finance
+
+# m5 <- glm(eq5, family=binomial(link=logit), dfa)
+# summary(m5)
+
+# m5 <- mlogit(eq5, ddata)
+
+
+
+
+
 
