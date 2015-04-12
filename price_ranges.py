@@ -400,21 +400,49 @@ def testfiles(cik):
 
 def run_tests():
 
-    cik = '1326801' # Facebook
-    cik = '1318605' # Tesla Motors
-    cik = '1594109' # Grubhub
-    cik = '1175685' # Bladelogic
-    cik = '1500435' # GoPro
-    cik = '1271024' # LinkedIn
+    # A unit test should have the following properties:
+    # It should be automated and repeatable.
+    # It should be easy to implement.
+    # Once it’s written, it should remain for future use.
+    # Anyone should be able to run it.
+    # It should run at the push of a button.
+    # It should run quickly.
+    testfirms = {
+        'Facebook'     :'1326801',
+        'Tesla Motors' :'1318605',
+        'Grubhub'      :'1594109',
+        'Bladelogic'   :'1175685',
+        'GoPro'        :'1500435',
+        'LinkedIn'     :'1271024'
+    }
 
-    # ciks = sorted(FINALJSON.keys())
-    ciks = ['1326801', '1318605', '1594109', '1175685', '1500435', '1271024']
+    passed_tests = 0
 
-    for cik in ciks:
-        print("{}:{}".format(cik, firmname(cik)))
-        tf = testfiles(cik)
-        price_range = [get_price_range(f) for f in testfiles(cik)]
-        print_pricerange(cik)
+    # linkedin
+    print("TESTING: {}: {}".format('LinkedIn', testfirms['LinkedIn']))
+    result = [get_price_range(f) for f in testfiles(testfirms['LinkedIn'])]
+    passed_tests += result == [
+                            ['$', '$'], ['$', '$'], ['$', '$'], ['$', '$'],
+                            ['$32.00', '$35.00'], ['$42.00', '$45.00'], ['NA'], ['$45.00']]
+    print_pricerange(testfirms['LinkedIn'])
+
+    # Facebook
+    print("TESTING: {}: {}".format('Facebook', testfirms['Facebook']))
+    result = [get_price_range(f) for f in testfiles(testfirms['Facebook'])]
+    passed_tests += result == [
+                            ['$', '$'], ['NA'], ['$', '$'], ['$', '$'], ['$', '$'],
+                            ['$28.00', '$35.00'], ['$28.00', '$35.00'], ['$34.00', '$38.00'],
+                            ['$34.00', '$38.00'], ['$38.00']]
+    print_pricerange(testfirms['Facebook'])
+
+    # GoPro
+    print("TESTING: {}: {}".format('GoPro', testfirms['GoPro']))
+    result = [get_price_range(f) for f in testfiles(testfirms['GoPro'])]
+    passed_tests +=  result == [['$', '$'], ['$21.00', '$24.00'], ['$24.00']]
+    print_pricerange(testfirms['GoPro'])
+
+    print("{} of 3 tests passed.".format(passed_tests))
+
 
 
 
@@ -455,10 +483,11 @@ if __name__=='__main__':
     # ciks = sorted(FINALJSON.keys())
     ciks = ['1326801', '1318605', '1594109', '1175685', '1500435', '1271024']
 
-    print("{}:{}".format(cik, firmname(cik)))
     tf = testfiles(cik)
-    price_range = [get_price_range(f) for f in testfiles(cik)]
-    print_pricerange(cik)
+    # print("{}:{}".format(cik, firmname(cik)))
+    # price_range = [get_price_range(f) for f in testfiles(cik)]
+    # print_pricerange(cik)
+    print("run_tests()")
 
 
 
