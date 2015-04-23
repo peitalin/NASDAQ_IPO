@@ -838,27 +838,29 @@ def from_FINALJSON_to_df():
     df = get_financials(df)
     df = misc_variables(df)
     df = order_df(df)
-    # df.to_csv("df.csv", dtype={'cik':object})
+    # df.to_csv("df.csv", dtype={"cik": object, 'SIC':object, 'Year':object})
 
 
 
 
 if '__Attention_variables__':
 
-    def attention_measures(df, category, event='final', makedir=False):
+    def attention_measures(df, category, event='final', makedir=True):
         """Calculates ASI (abnormal search interest) and CASI (cumulative abnormal search interest)
             ASI = IoT - IoT_{n}day_median ({n}=15, 30, or 60 days back)
         Args:
             --category: 'business_industrial', 'finance', 'all'
-            --df: dataframe
+            --df: dataframe or list of firm cik identifiers
             --event: ['final', '1st_update', 'listing']
         """
 
         from pandas.stats.moments import rolling_median, rolling_sum
         QDIR = os.path.join(os.path.expanduser('~'), 'Dropbox', 'gtrends-beta', 'cik-ipo', 'query_counts')
-        QWEIGHTS = {'missing':-1, 'weekly': 0, 'daily': 1}
+        QWEIGHTS = {'missing':0, 'weekly': 0.5, 'daily': 1}
         CATEGORYID = {'all': '0', 'finance': '0-7', 'business_industrial': '0-12'}
-        ciks = tuple(df.index)
+
+        ciks = tuple(df.index) if isinstance(df, pd.core.frame.DataFrame) else df
+
 
         def build_qcount_dict(category):
             qdict = {}
@@ -897,7 +899,7 @@ if '__Attention_variables__':
                     end_date = trade_date
 
             elif event=='listing':
-                end_date = trade_date
+                end_date = trade_date.replace(days=1)
 
             elif event!='listing':
                 if firm['days_to_first_price_update'] < firm['days_to_final_price_revision']:
@@ -958,8 +960,8 @@ if '__Attention_variables__':
             iot = rolling_attention(iot, window=60)
 
             end_date = get_end_date(cik, event=event)
-            # df.loc[cik, 'gtrends_name'] = firm
-            # df.loc[cik, 'IoT_entity_type'] = get_entity_type(iot_raw_data, df)
+            df.loc[cik, 'gtrends_name'] = firm
+            df.loc[cik, 'IoT_entity_type'] = get_entity_type(iot_raw_data, df)
 
             df.loc[cik, 'IoT_15day_CASI_%s' % category] = iot['15day_CASI'].loc[end_date]
             df.loc[cik, 'IoT_30day_CASI_%s' % category] = iot['30day_CASI'].loc[end_date]
@@ -1157,11 +1159,11 @@ def process_IOT_variables():
 
     df = weighted_iot(df, window=15, weighting='equal')
     df = weighted_iot(df, window=30, weighting='equal')
-    df = weighted_iot(df, window=60, weighting='equal')
 
     df = news_iot(df, window=15)
+    df = news_iot(df, window=30)
 
-    df.to_csv("df.csv", dtype={"cik": object, 'SIC':object})
+    df.to_csv("df.csv", dtype={"cik": object, 'SIC':object, 'Year':object})
 
 
     ### Attention until 1st price update
@@ -1171,13 +1173,26 @@ def process_IOT_variables():
 
     dfu = weighted_iot(dfu, window=15, weighting='equal')
     dfu = weighted_iot(dfu, window=30, weighting='equal')
-    dfu = weighted_iot(dfu, window=60, weighting='equal')
+    dfu = news_iot(dfu, window=15)
+    dfu = news_iot(dfu, window=30)
 
-    dfu.to_csv("df_update.csv", dtype={"cik": object, 'SIC':object})
+    dfu.to_csv("df_update.csv", dtype={"cik": object, 'SIC':object, 'Year':object})
 
 
 
+    ### Attention until close return
+    dfl = df
+    dfl = attention_measures(dfl, 'all', event='listing')
+    dfl = attention_measures(dfl, 'finance', event='listing')
+    dfl = attention_measures(dfl, 'business_industrial', event='listing')
 
+    dfl = weighted_iot(dfl, window=15, weighting='equal')
+    dfl = weighted_iot(dfl, window=30, weighting='equal')
+
+    dfl = news_iot(dfl, window=15)
+    dfl = news_iot(dfl, window=30)
+
+    dfl.to_csv("dfl.csv", dtype={"cik": object, 'SIC':object, 'Year':object})
 
 
 
