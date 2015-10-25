@@ -125,27 +125,7 @@ if __name__=='__main__':
     revisions['close_return'] *= 100
 
 
-    # check .describe() to see key order: above, under, within (alphabetical)
-    # above, under, within = [x[1] for x in revisions.groupby(['offer_in_filing_price_range'])]
 
-
-    """
-    g, gdown, gmid, gup, dplotargs = set_data(revisions,
-                                        groupby_key='percent_final_price_revision',
-                                        hi=10, lo=-0.1,
-                                        color_palette='deep' )
-    sb_distplots(dplotargs, update_type="(Price Revisions)")
-    # plt.savefig("conditional-returns-revisions.png", dpi=200)
-
-
-
-    g, gdown, gmid, gup, dplotargs = set_data(amendments,
-                                        groupby_key='percent_first_price_update',
-                                        hi=0, lo=0,
-                                        color_palette='colorblind' )
-    sb_distplots(dplotargs, update_type="(Price Updates)")
-    # plt.savefig("conditional-returns-updates.png", dpi=200)
-    """
 
 
 
@@ -161,6 +141,10 @@ def conditional_underpricing_plots():
                                         groupby_key='percent_final_price_revision',
                                         hi=10, lo=-0,
                                         color_palette='deep' )
+
+    sb_distplots(dplotargs, update_type="(Price Revisions)")
+    # plt.savefig("conditional-returns-revisions.png", dpi=200)
+
 
     sb.jointplot("percent_final_price_revision", "close_return", gdown, kind='reg', color=c1, size=6, ylim=(-100, 200), xlim=(-80, 0))
     plt.savefig("./jointplot-red.png")
@@ -182,10 +166,12 @@ def conditional_underpricing_plots():
     c1, c2, c3 = c[2], c[0], sb.color_palette("husl")[3]
 
 
-    g, gdown, gmid, gup, dplotargs = set_data(revisions,
+    g, gdown, gmid, gup, dplotargs = set_data(amendments,
                                         groupby_key='percent_first_price_update',
                                         hi=0, lo=0,
                                         color_palette='colorblind' )
+    sb_distplots(dplotargs, update_type="(Price Updates)")
+    # plt.savefig("conditional-returns-updates.png", dpi=200)
 
     sb_distplots(dplotargs, update_type="(Price Updates)")
     # plt.savefig("conditional-returns-updates.png", dpi=200)
@@ -236,6 +222,7 @@ def underwriter_facet_plots():
                         palette=common,
                         size=5)
 
+
     g.map_upper(sb.regplot, scatter_kws={"s": 8})
     g.map_lower(plt.scatter, s=10)
     g.map_diag(plt.hist)
@@ -243,6 +230,31 @@ def underwriter_facet_plots():
     g.set(xlim=(-80, 80), xticks=[-80, -60, -40, -20, 0, 20, 40, 60, 80],
           ylim=(-80, 80), yticks=[-80, -60, -40, -20, 0, 20, 40, 60, 80]);
     g.add_legend()
+
+
+    plt.scatter(revisions.percent_first_price_update,
+                revisions.percent_final_price_revision,
+                c=common[0], s=12 )
+    plt.xlim(-80,80)
+    plt.ylim(-80,80)
+    plt.xlabel('First Price Update (%)')
+    plt.ylabel('Final Price Revision (%)')
+
+
+    ### Just scatterplot
+    r1, r0, r7, r9 = [x[1] for x in revisions.groupby('underwriter_tier')]
+    plt.scatter(r0.percent_first_price_update, r0.percent_final_price_revision,
+            c=common[0], s=12, label='Rank: 0+')
+    plt.scatter(r7.percent_first_price_update, r7.percent_final_price_revision,
+            c=common[1], s=12, label='Rank: 7+')
+    plt.scatter(r9.percent_first_price_update, r9.percent_final_price_revision,
+            c=common[2], s=12, label='Rank: 8.5+')
+    plt.xlim(-80,80)
+    plt.ylim(-80,80)
+    plt.xlabel('First Price Update (%)')
+    plt.ylabel('Final Price Revision (%)')
+    plt.legend()
+
 
 
 def histograms_price_update_plot():
@@ -253,10 +265,10 @@ def histograms_price_update_plot():
     ###### Price updates
     m, s = amendments['size_of_first_price_update'].mean(), amendments['size_of_first_price_update'].std()
     plt.hist(amendments['size_of_first_price_update'],
-                bins=63, alpha=0.6, color=colors2[4], label="First Price Update\n  μ = {:.2f}\n  σ = {:.2f}\n  N = {}".format(m, s, len(amendments)))
+                bins=63, alpha=0.6, color=common[1], label="First Price Update\n  μ = {:.2f}\n  σ = {:.2f}\n  N = {}".format(m, s, len(amendments)))
     # plt.xticks(xy[1])
     plt.legend()
-    plt.xlim(-12,12)
+    plt.xlim(-10,10)
     plt.ylabel("Frequency")
     plt.xlabel("Dollar Price Change ($)")
 
@@ -345,31 +357,19 @@ def plot_var_dist(plotargs, kkey, kw_xy=(20,20), color="muted"):
     cpalette = sb.color_palette(color)
 
     for arg in plotargs:
-        df, label, color_num, xshift, yshift = arg
+        df, label, color_num = arg
         color = cpalette[color_num]
-        label += " Obs={}".format(len(df))
-
         # Summary stats:
         mean = df[kkey].mean()
-        mode = df[kkey].mode()
         med  = df[kkey].median()
         std  = df[kkey].std()
         skew = df[kkey].skew()
-        stat = u"\nμ={:0.2f}  med={:0.2f}\nσ={:0.2f}  skew={:0.2f}".format(
-                mean, med, std, skew)
+        stat = u"\nμ={:0.2f}   med={:0.2f}\nσ={:0.2f}   N={}".format(
+                mean, med, std, len(df))
+        label += stat
 
-        yvals, xvals, patchs = plt.hist(df[kkey].tolist(), bins=64, label=label,
+        yvals, xvals, patchs = plt.hist(df[kkey].tolist(), bins=100, label=label,
                                 color=color, alpha=0.6, histtype='stepfilled')
-
-        coords = list(zip(yvals,xvals))
-        coords.sort()
-        y, x = coords[-2]
-        # x = med
-
-        ax.annotate(stat,
-                    xy=(x, y),
-                    xytext=(x*xshift, y*yshift),
-                    arrowprops={'facecolor': color, 'width': 1.6, 'headwidth': 1.6})
 
     H, prob = kruskalwallis(*[x[0][kkey] for x in plotargs])
     # U, prob = mannwhitneyu(*[x[0][kkey] for x in plotargs])
@@ -428,27 +428,27 @@ def plot_kaplan_function():
 ########
 
 
-days = 60
-IOTKEY = 'ln_{}day_CASI_all'.format(days)
+days = 15
+IOTKEY = 'IoT_{}day_CASI_weighted_finance'.format(days)
 above, under, within = [x[1] for x in revisions.groupby('offer_in_filing_price_range')]
 
 cik1, cik2 = above[above[IOTKEY] == 0][:2].index
 cik3, cik4 = under[under[IOTKEY] == 0][:2].index
 cik5, cik6 = within[within[IOTKEY] == 0][:2].index
-above.loc[cik1, IOTKEY] = 8
-above.loc[cik2, IOTKEY] = -8
-under.loc[cik3, IOTKEY] = 8
-under.loc[cik4, IOTKEY] = -8
-within.loc[cik5, IOTKEY] = 8
-within.loc[cik6, IOTKEY] = -8
+above.loc[cik1, IOTKEY] = 20
+above.loc[cik2, IOTKEY] = -20
+under.loc[cik3, IOTKEY] = 20
+under.loc[cik4, IOTKEY] = -20
+within.loc[cik5, IOTKEY] = 20
+within.loc[cik6, IOTKEY] = -20
 ########
 
 plotargs = [
-        (within, "Within Price Range", 3, 1.1, 2.4),
-        (under, "Under Price Range", 2, 1.2, 1.9),
-        (above, "Above Price Range", 5, 1.1, 1.2),
+        (within, "Within Price Range", 3),
+        (under, "Under Price Range", 2),
+        (above, "Above Price Range", 5),
             ]
-plot_var_dist(plotargs, kkey=IOTKEY, kw_xy=(-7.2, 22))
+plot_var_dist(plotargs, kkey=IOTKEY, kw_xy=(-18, 12))
 plt.xlabel(IOTKEY.replace("_", " "))
 plt.title("Abnormal Attention and Price Revision Groups")
 ######
@@ -468,24 +468,24 @@ plt.savefig("/Users/peitalin/Desktop/iot_revisions_{}d.png".format(days), dpi=20
 
 
 days = 60
-IOTKEY = 'ln_{}day_CASI_all'.format(days)
+IOTKEY = 'IoT_{}day_CASI_weighted_finance'.format(days)
 down, noupdate, up = [x[1] for x in revisions.groupby('amends')]
 cik1, cik2 = above[above[IOTKEY] == 0][:2].index
 cik3, cik4 = under[under[IOTKEY] == 0][:2].index
 cik5, cik6 = within[within[IOTKEY] == 0][:2].index
-down.loc[cik1, IOTKEY] = 8
-down.loc[cik2, IOTKEY] = -8
-up.loc[cik3, IOTKEY] = 8
-up.loc[cik4, IOTKEY] = -8
-noupdate.loc[cik5, IOTKEY] = 8
-noupdate.loc[cik6, IOTKEY] = -8
+down.loc[cik1, IOTKEY] = 20
+down.loc[cik2, IOTKEY] = -20
+up.loc[cik3, IOTKEY] = 20
+up.loc[cik4, IOTKEY] = -20
+noupdate.loc[cik5, IOTKEY] = 20
+noupdate.loc[cik6, IOTKEY] = -20
 
 plotargs = [
-            (noupdate, "No Update", 3, 1.1, 2.6),
-            (down, "Down", 2, 1.22, 2.4),
-            (up, "Up", 5, 1.1, 2.9),
+            (noupdate, "No Update", 3),
+            (down, "Down", 2),
+            (up, "Up", 5),
             ]
-plot_var_dist(plotargs, kkey=IOTKEY, kw_xy=(-7.2, 22))
+plot_var_dist(plotargs, kkey=IOTKEY, kw_xy=(-12, 12))
 plt.xlabel(IOTKEY.replace("_", " "))
 plt.title("Abnormal Attention and Price Amendments")
 #####
@@ -506,8 +506,8 @@ plt.savefig("/Users/peitalin/Desktop/iot_amends_{}d.png".format(days), dpi=200, 
 def uw_tier(uw_rank):
     if uw_rank > 8.5:
         return "8.5+"
-    elif uw_rank > 6:
-        return "6+"
+    elif uw_rank > 7:
+        return "7+"
     elif uw_rank >= 0:
         return "0+"
     elif uw_rank < 0:
@@ -515,6 +515,7 @@ def uw_tier(uw_rank):
 
 
 """
+
 
 df = pd.read_csv(BASEDIR + '/df.csv', dtype={'cik':object})
 df.set_index('cik', inplace=True)
@@ -531,15 +532,73 @@ amendments['close_return'] *= 100
 revisions['percent_final_price_revision'] *= 100
 revisions['percent_first_price_update'] *= 100
 revisions['close_return'] *= 100
-r1, r0, r6, r9 = [x[1] for x in revisions.groupby('underwriter_tier')]
+r1, r0, r7, r9 = [x[1] for x in revisions.groupby('underwriter_tier')]
 
 
-plotargs = [(r9, "Rank 8.5+", 5, 1.06, 1.2),
-            (r6, "Rank 6+", 3, 1.1, 1.2),
-            (r0, "Rank 0+", 2, 1.1, 1.2)]
-plot_var_dist(plotargs, kkey='ln_CSI_all_finance', kw_xy=(8.1, 74))
-plt.xlabel("ln(CASI)")
-plt.xlim(0,9)
-plt.title("Abnormal Attention and Price Amendments")
+days = 15
+IOTKEY = 'IoT_{}day_CASI_weighted_finance'.format(days)
+plotargs = [
+            (r9, "Rank 8.5+", 2),
+            (r7, "Rank 7+", 5),
+            (r0, "Rank 0+", 0)
+            ]
+plot_var_dist(plotargs, kkey='IoT_{}day_CASI_all'.format(days), kw_xy=(-12, 22), color='colorblind')
+
+plt.xlabel(IOTKEY.replace("_", " "))
+plt.title("Abnormal Attention and Underwriter Rank")
+
+plt.savefig("/Users/peitalin/Desktop/iot_underwriter_{}d.png".format(days), dpi=200, format='png')
 
 """
+
+
+
+
+
+"""
+
+
+
+def abnormal_svi(df, window=15, category='all'):
+    ASVI = pd.read_csv("IoT/ASVI_{}day_{}.csv".format(window, category), dtype={'cik': object}).set_index('cik')
+    return ASVI
+
+common = [
+        (0.15, 0.2870588235294118, 0.4480392156862745),
+        sb.color_palette('colorblind')[0],
+        (0.9352941176470589, 0.5686274509803922, 0.2),
+        ]
+ASVI15 = abnormal_svi(df, window=15, category='weighted_finance')
+ASVI30 = abnormal_svi(df, window=30, category='weighted_finance')
+ASVI60 = abnormal_svi(df, window=60, category='weighted_finance')
+
+r1, r0, r7, r9 = [v[1].index for v in df.groupby("underwriter_tier")]
+
+
+fig, ax  = plt.subplots(3)
+
+#  15 day
+ax[0].plot(range(-15,16), ASVI15.loc[r0].mean(), label='Rank 0+', c=common[0])
+ax[0].plot(range(-15,16), ASVI15.loc[r7].mean(), label='Rank 7+', c=common[1])
+ax[0].plot(range(-15,16), ASVI15.loc[r9].mean(), label='Rank 8.5+', c=common[2])
+ax[0].legend()
+
+#  30 day
+ax[1].plot(range(-30,31), ASVI30.loc[r0].mean(), label='Rank 0+', c=common[0])
+ax[1].plot(range(-30,31), ASVI30.loc[r7].mean(), label='Rank 7+', c=common[1])
+ax[1].plot(range(-30,31), ASVI30.loc[r9].mean(), label='Rank 8.5+', c=common[2])
+
+
+#  60 day
+ax[2].plot(range(-60,61), ASVI60.loc[r0].mean(), label='Rank 0+', c=common[0])
+ax[2].plot(range(-60,61), ASVI60.loc[r7].mean(), label='Rank 7+', c=common[1])
+ax[2].plot(range(-60,61), ASVI60.loc[r9].mean(), label='Rank 8.5+', c=common[2])
+
+plt.xlabel("Days before and after final price revision")
+plt.suptitle("CASI Before and After Price Revision", size=12)
+plt.savefig("/Users/peitalin/Desktop/CASI_uw.png", dpi=200, format='png')
+
+
+
+"""
+
