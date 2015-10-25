@@ -151,7 +151,7 @@ if __name__=='__main__':
 def xls_empirics(lm, column='C', sheet='15dayCASI', model_type='lm', cluster=('FF49_industry',), sigstars=True):
 
     from xlwings import Workbook, Range, Sheet
-    wb = Workbook("xl_empirics.xlsx")
+    wb = Workbook(os.path.join(BASEDIR, "xl_empirics.xlsx"))
     Sheet(sheet).activate()
     column = column.upper()
 
