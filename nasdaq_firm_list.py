@@ -1,6 +1,7 @@
 # /usr/bin/python3
 # encoding: utf-8
 
+import os
 import csv, time, traceback, gzip, io
 from urllib.request import Request, urlopen
 from lxml           import etree
@@ -70,26 +71,21 @@ if __name__ == "__main__":
 
     months = month_range('2005-01', '2015-10')
 
-    pricings_file = 'pricings.csv'
-    filings_file = 'filings.csv'
-    withdrawns_file = 'withdrawns.csv'
     pricings = [['Company Name', 'Symbol', 'Market', 'Price', 'Shares', 'Offer Amount', 'Date Priced', 'URL']]
     filings = [['Company Name', 'Symbol', 'Offer Amount', 'Date Filed', 'URL']]
-    withdrawns = [['Company Name', 'Symbol', 'Market', 'Price', 'Shares', 'Offer Amount', 'Date Filed', 'Date Withdrawn', 'URL']]
+    withdrawns = [['Company Name', 'Symbol', 'Shares', 'Offer Amount', 'Date Filed', 'Date Withdrawn', 'URL']]
 
-    # for month in months:
-    #   pricings.extend(get_rows('pricings', month))
-    #   filings.extend(get_rows('filings', month))
-    #   withdrawns.extend(get_rows('withdrawn', month))
+    for month in months:
+      pricings.extend(get_rows('pricings', month))
+      filings.extend(get_rows('filings', month))
+      withdrawns.extend(get_rows('withdrawn', month))
 
-    # with open(pricings_file, 'wb') as csvfile:
-    #   csv.writer(csvfile).writerows(pricings)
+    withdrawns = [[x[0], ''] + x[1:] if len(x)==6 else x for x in withdrawns]
+    # Some are missing ticker symbols
 
-    # with open(filings_file, 'wb') as csvfile:
-    #   csv.writer(csvfile).writerows(filings)
-
-    # with open(withdrawns_file, 'wb') as csvfile:
-    #   csv.writer(csvfile).writerows(withdrawns)
+    pd.DataFrame(pricings[1:], columns=pricings[0]).to_csv('data/nasdaq_pricings.csv')
+    pd.DataFrame(filings[1:], columns=filings[0]).to_csv('data/nasdaq_filings.csv')
+    pd.DataFrame(withdrawns[1:] , columns=withdrawns[0]).to_csv('data/nasdaq_withdrawns.csv')
 
 
 
