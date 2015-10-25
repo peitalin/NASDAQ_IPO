@@ -2,6 +2,7 @@
 # encoding: utf-8
 
 import csv, time, traceback, gzip, io
+from urllib.request import Request, urlopen
 from lxml           import etree
 from pprint         import pprint
 
@@ -11,7 +12,32 @@ from operator       import iadd
 from IPython        import embed
 import pandas as pd
 import arrow
-import requests
+
+
+
+
+def read_url(url, success_delay=0.5, error_delay=5):
+    "returns html page, adds a delay and retry if needed"
+
+    tries = count(1)
+    while next(tries) < 5:
+        try:
+            request = Request(url)
+            request.add_header('Accept-encoding', 'gzip')
+            response = urlopen(request)
+            if response.info().get('Content-Encoding') == 'gzip':
+                buf = io.BytesIO(response.read())
+                f = gzip.GzipFile(fileobj=buf)
+                data = f.read()
+                print("Read GZip Data", url)
+            else:
+                data = response.read()
+                print("Read Uncompressed Data")
+            time.sleep(success_delay)
+            return data
+        except:
+            traceback.print_exc()
+            time.sleep(error_delay)
 
 
 
@@ -21,8 +47,7 @@ def get_rows(tab, month):
     url = "http://www.nasdaq.com/markets/ipos/activity.aspx"
     url += "?tab={T}&month={M}".format(T=tab, M=month)
     print(url)
-    sess = requests.get(url)
-    xml = etree.HTML(sess.text)
+    xml = etree.HTML(read_url(url))
 
     rows = []
     trs = xml.xpath('//div[@class="genTable"]/table/tbody/tr')
@@ -40,35 +65,10 @@ def month_range(start, end):
     return [a.strftime('%Y-%m') for a in date_range]
 
 
-
-def update_nasdaq_pricings(endmonth='2014-09'):
-
-    df_pricings = pd.read_csv("data/nasdaq_pricings.csv")
-    # Check last date from pricings, begin from there.
-    month, d, year = list(df_pricings.tail()['Date Priced'])[0].split('/')
-    startmonth = '0'+ month if len(month)==1 else month
-    startmonth = year + '-' + startmonth
-
-    months = month_range(startmonth, endmonth)
-    for month in months:
-        print("Start month: {} -> End month: {}".format(startmonth, endmonth))
-        pricings.extend(get_rows('pricings', month))
-
-    new_pricings = pd.DataFrame(pricings[1:], columns=pricings[0])
-    df_pricings = pd.read_csv("data/nasdaq_pricings.csv")
-    df_pricings = df_pricings.merge(new_pricings, how='outer')
-    df_pricings = df_pricings[df_pricings['Market'] != 'OTCBB']
-    df_pricings.to_csv("data/nasdaq_pricings.csv", index=False)
-
-
-
-
-
-
 # collects and saves data into csv
 if __name__ == "__main__":
 
-    months = month_range('2005-01', '2014-08')
+    months = month_range('2005-01', '2014-06')
 
     pricings_file = 'pricings.csv'
     filings_file = 'filings.csv'
@@ -92,14 +92,13 @@ if __name__ == "__main__":
     #   csv.writer(csvfile).writerows(withdrawns)
 
 
-    # new_pricings = pd.DataFrame(pricings[1:], columns=pricings[0])
-    # df_pricings = pd.read_csv("data/nasdaq_pricings.csv")
-    # # df_filings = pd.read_csv("../SEC_index/filings.csv")
-    # # df_withdrawn = pd.read_csv("../SEC_index/withdrawns.csv")
+    df_pricings = pd.read_csv("../SEC_index/pricings.csv")
+    df_filings = pd.read_csv("../SEC_index/filings.csv")
+    df_withdrawn = pd.read_csv("../SEC_index/withdrawns.csv")
 
-    # df_pricings = df_pricings.append(new_pricings)
-    # df_pricings = df_pricings[df_pricings['Market'] != 'OTCBB']
-    # df_pricings.to_csv("data/nasdaq_pricings.csv", index=False)
+    df_pricings = df_pricings[df_pricings['Market'] != 'OTCBB']
+
+
 
 
 
