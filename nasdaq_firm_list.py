@@ -68,7 +68,7 @@ def month_range(start, end):
 # collects and saves data into csv
 if __name__ == "__main__":
 
-    months = month_range('2005-01', '2014-06')
+    months = month_range('2005-01', '2015-10')
 
     pricings_file = 'pricings.csv'
     filings_file = 'filings.csv'
@@ -92,11 +92,6 @@ if __name__ == "__main__":
     #   csv.writer(csvfile).writerows(withdrawns)
 
 
-    df_pricings = pd.read_csv("../SEC_index/pricings.csv")
-    df_filings = pd.read_csv("../SEC_index/filings.csv")
-    df_withdrawn = pd.read_csv("../SEC_index/withdrawns.csv")
-
-    df_pricings = df_pricings[df_pricings['Market'] != 'OTCBB']
 
 
 
