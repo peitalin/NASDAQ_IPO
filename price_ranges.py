@@ -441,7 +441,15 @@ def run_tests():
     passed_tests +=  result == [['$', '$'], ['$21.00', '$24.00'], ['$24.00']]
     print_pricerange(testfirms['GoPro'])
 
-    print("{} of 3 tests passed.".format(passed_tests))
+    #  Tesla Motors
+    print("TESTING: {}: {}".format('Tesla Motors', testfirms['Tesla Motors']))
+    result = [get_price_range(f) for f in testfiles(testfirms['Tesla Motors'])]
+    passed_tests +=  result == [['$', '$'], ['$', '$'], ['$', '$'], ['$', '$'], ['$', '$'],
+                                ['$14.00', '$16.00'], ['$14.00', '$16.00'], ['$14.00', '$16.00'],
+                                ['NA'], ['$17.00']]
+    print_pricerange(testfirms['Tesla Motors'])
+
+    print("{} of 4 tests passed.".format(passed_tests))
 
 
 
@@ -488,6 +496,8 @@ if __name__=='__main__':
     # price_range = [get_price_range(f) for f in testfiles(cik)]
     # print_pricerange(cik)
     print("run_tests()")
+
+
 
 
 
