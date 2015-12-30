@@ -262,6 +262,7 @@ def final_json_clean_data(FINALJSON=FINALJSON):
 
 if __name__=='__main__':
     df_pricings = pd.read_csv("./data/nasdaq_pricings.csv")
+    df_pricings = df_pricings.drop('Unnamed: 0', axis=1)
     finaljson_firms = [FINALJSON[cik]['Company Overview']['Company Name'] for cik in FINALJSON.keys()]
     df =  df_pricings[[x not in finaljson_firms for x in df_pricings['Company Name']]]
     # df = df_pricings[df_pricings['CIK'] == 'NA']
