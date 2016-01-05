@@ -1195,6 +1195,23 @@ def process_IOT_variables():
     dfl.to_csv("dfl.csv", dtype={"cik": object, 'SIC':object, 'Year':object})
 
 
+def uw_syndicate(experts):
+
+    experts['Underwriter'] = [[] if type(x)!=list else x for x in experts['Underwriter']]
+    experts['Lead Underwriter'] = [[] if type(x)!=list else x for x in experts['Lead Underwriter']]
+    df['underwriter_syndicate_size'] = [0] * len(df)
+
+    syndicate = []
+    for cik in df.index:
+        print(cik)
+        syn_size = len(set(experts.ix[cik]['Lead Underwriter'] +  experts.ix[cik]['Underwriter']))
+        syndicate.append(syn_size)
+
+    df['underwriter_syndicate_size'] = syndicate
+
+
+
+
 
 
 
