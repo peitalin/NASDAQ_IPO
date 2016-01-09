@@ -405,7 +405,7 @@ def OLS_final_revisions(days=15):
             # 'delay_in_price_update',
             'underwriter_rank_avg',
             'VC',
-            'confidential_IPO',
+            # 'confidential_IPO',
             'media_1st_pricing',
             'share_overhang',
             'log(proceeds)',
@@ -418,6 +418,7 @@ def OLS_final_revisions(days=15):
         ]
         VROW = dict(zip(VARS, [str(n) for n in range(4,100,2)]))
 
+
     IOTKEY = 'IoT_{}day_CASI_weighted_finance'.format(days)
     ALLVAR = [
             'Year',
@@ -425,7 +426,7 @@ def OLS_final_revisions(days=15):
             'log(days_from_s1_to_listing)',
             'underwriter_rank_avg',
             'VC',
-            'confidential_IPO',
+            # 'confidential_IPO',
             'media_1st_pricing',
             'share_overhang',
             'log(proceeds)',
@@ -459,6 +460,7 @@ def OLS_final_revisions(days=15):
         dfR$IoT_15day_CASI_weighted_finance <- dfR$IoT_15day_CASI_weighted_finance - mean(dfR$IoT_15day_CASI_weighted_finance)
         dfR$IoT_30day_CASI_weighted_finance <- dfR$IoT_30day_CASI_weighted_finance - mean(dfR$IoT_30day_CASI_weighted_finance)
 
+
         dfR$IoT_15day_CASI_all <- dfR$IoT_15day_CASI_all - mean(dfR$IoT_15day_CASI_all)
         dfR$IoT_30day_CASI_all <- dfR$IoT_30day_CASI_all - mean(dfR$IoT_30day_CASI_all)
 
@@ -467,6 +469,17 @@ def OLS_final_revisions(days=15):
 
         dfR$priceupdate_up <- dfR$priceupdate_up - mean(dfR$priceupdate_up)
         dfR$priceupdate_down <- dfR$priceupdate_down - mean(dfR$priceupdate_down)
+
+        # Partialling out media_listing effect on IOT
+        # Regress IOT ~ media_listing and take residuals to use in regression
+        dfR$IoT_15day_CASI_weighted_finance <- lm(dfR$IoT_15day_CASI_weighted_finance ~ dfR$media_listing )$residuals
+        dfR$IoT_30day_CASI_weighted_finance <- lm(dfR$IoT_30day_CASI_weighted_finance ~ dfR$media_listing )$residuals
+
+        dfR$IoT_15day_CASI_all <- lm(dfR$IoT_15day_CASI_all ~ dfR$media_listing )$residuals
+        dfR$IoT_30day_CASI_all <- lm(dfR$IoT_30day_CASI_all ~ dfR$media_listing )$residuals
+
+        dfR$IoT_15day_CASI_news <- lm(dfR$IoT_15day_CASI_news ~ dfR$media_listing )$residuals
+        dfR$IoT_30day_CASI_news <- lm(dfR$IoT_30day_CASI_news ~ dfR$media_listing )$residuals
 
         """.split('\n')))
 
@@ -487,7 +500,7 @@ def OLS_final_revisions(days=15):
             'log(days_from_s1_to_listing)',
             'underwriter_rank_avg',
             'VC',
-            'confidential_IPO',
+            # 'confidential_IPO',
             'media_1st_pricing',
             'share_overhang',
             'log(proceeds)',
@@ -520,7 +533,7 @@ def OLS_final_revisions(days=15):
             'log(days_from_s1_to_listing)',
             'underwriter_rank_avg',
             'VC',
-            'confidential_IPO',
+            # 'confidential_IPO',
             'media_1st_pricing',
             'share_overhang',
             'log(proceeds)',
@@ -542,6 +555,15 @@ def OLS_final_revisions(days=15):
         # lm = smf.ols('percent_final_price_revision ~ ' + X, data=df).fit()
         lm = 'percent_final_price_revision ~ ' + X
         xls_empirics(lm, column=col, sheet='{}dayCASI'.format(days), cluster=clusterby)
+
+
+
+
+
+
+
+
+
 
 
 
@@ -578,7 +600,7 @@ def OLS_initial_returns():
         'log(days_from_s1_to_listing)',
         'underwriter_rank_avg',
         'VC',
-        'confidential_IPO',
+        # 'confidential_IPO',
         'media_listing',
         'share_overhang',
         'log(proceeds)',
@@ -605,7 +627,7 @@ def OLS_initial_returns():
         'share_overhang',
         'log(proceeds)',
         'log(1 + sales)',
-        'confidential_IPO',
+        # 'confidential_IPO',
         'media_listing',
         'EPS',
         'M3_indust_rets',
@@ -637,6 +659,17 @@ def OLS_initial_returns():
 
         dfR$pct_final_revision_up <- dfR$pct_final_revision_up - mean(dfR$pct_final_revision_up)
         dfR$pct_final_revision_down <- dfR$pct_final_revision_down - mean(dfR$pct_final_revision_down)
+
+        # Partialling out media_listing effect on IOT
+        # Regress IOT ~ media_listing and take residuals to use in regression
+        dfR$IoT_15day_CASI_weighted_finance <- lm(dfR$IoT_15day_CASI_weighted_finance ~ dfR$media_listing )$residuals
+        dfR$IoT_30day_CASI_weighted_finance <- lm(dfR$IoT_30day_CASI_weighted_finance ~ dfR$media_listing )$residuals
+
+        dfR$IoT_15day_CASI_all <- lm(dfR$IoT_15day_CASI_all ~ dfR$media_listing )$residuals
+        dfR$IoT_30day_CASI_all <- lm(dfR$IoT_30day_CASI_all ~ dfR$media_listing )$residuals
+
+        dfR$IoT_15day_CASI_news <- lm(dfR$IoT_15day_CASI_news ~ dfR$media_listing )$residuals
+        dfR$IoT_30day_CASI_news <- lm(dfR$IoT_30day_CASI_news ~ dfR$media_listing )$residuals
 
         ##""".split('\n')))
 
@@ -723,7 +756,7 @@ def HLM_initial_returns():
         'log(days_from_s1_to_listing)',
         'underwriter_rank_avg',
         'VC',
-        'confidential_IPO',
+        # 'confidential_IPO',
         'media_listing',
         'share_overhang',
         'log(proceeds)',
@@ -749,7 +782,7 @@ def HLM_initial_returns():
         'share_overhang',
         'log(proceeds)',
         'log(1 + sales)',
-        'confidential_IPO',
+        # 'confidential_IPO',
         'media_listing',
         'EPS',
         'M3_indust_rets',
@@ -775,6 +808,17 @@ def HLM_initial_returns():
 
         dfR$pct_final_revision_up <- dfR$pct_final_revision_up - mean(dfR$pct_final_revision_up)
         dfR$pct_final_revision_down <- dfR$pct_final_revision_down - mean(dfR$pct_final_revision_down)
+
+        # Partialling out media_listing effect on IOT
+        # Regress IOT ~ media_listing and take residuals to use in regression
+        dfR$IoT_15day_CASI_weighted_finance <- lm(dfR$IoT_15day_CASI_weighted_finance ~ dfR$media_listing )$residuals
+        dfR$IoT_30day_CASI_weighted_finance <- lm(dfR$IoT_30day_CASI_weighted_finance ~ dfR$media_listing )$residuals
+
+        dfR$IoT_15day_CASI_all <- lm(dfR$IoT_15day_CASI_all ~ dfR$media_listing )$residuals
+        dfR$IoT_30day_CASI_all <- lm(dfR$IoT_30day_CASI_all ~ dfR$media_listing )$residuals
+
+        dfR$IoT_15day_CASI_news <- lm(dfR$IoT_15day_CASI_news ~ dfR$media_listing )$residuals
+        dfR$IoT_30day_CASI_news <- lm(dfR$IoT_30day_CASI_news ~ dfR$media_listing )$residuals
 
         ##""".split('\n')))
 
@@ -912,7 +956,7 @@ def corrmatrix():
         'log(proceeds)',
         'log(1+sales)',
         'log(days_from_s1_to_listing)',
-        'confidential_IPO',
+        # 'confidential_IPO',
         'media_listing',
         'M3_indust_rets',
         'M3_initial_returns'
@@ -947,7 +991,7 @@ if testing_reg:
             # 'underwriter_rank_avg',
             'underwriter_collective_rank',
             'VC',
-            'confidential_IPO',
+            # 'confidential_IPO',
             'Year',
             # 'FF49_industry',
             'share_overhang',
@@ -985,7 +1029,7 @@ if testing_reg:
             'number_of_price_updates_down',
             'underwriter_rank_avg',
             'VC',
-            'confidential_IPO',
+            # 'confidential_IPO',
             'share_overhang',
             'log(proceeds)',
             'log(1 + sales)',
