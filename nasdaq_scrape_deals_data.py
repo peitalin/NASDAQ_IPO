@@ -29,45 +29,6 @@ def extract_NASDAQ_IPO_data_threaded(links):
     Scrapes all data from NASDAQ IPO links obtained from get_nasdaq_links.py.
     """
 
-    def extract_NASDAQ_IPO_data(links):
-        """Main loop called from extract_NASDAQ_IPO_data_threaded()"""
-
-        final_dict = {}
-        for link in links:
-            if glob.glob(FILE_PATH + '/{}*'.format(str(link[0]))):
-                print("NASDAQ data exists for {}, skipping".format(str(link[0])))
-                continue
-
-            print("Getting data for: " + link[1].split('/')[-1])
-            url = overview_url = link[1]
-            financials_url = url + "?tab=financials"
-            experts_url = url + "?tab=experts"
-            item_dict = {}
-
-            company_overview_dict = scrape_company_overview(url)
-            item_dict['Company Overview'] = company_overview_dict
-            cik = company_overview_dict['CIK'][3:]
-
-            item_dict['Metadata'] = {}
-            item_dict['Metadata']['Use of Proceeds'] = cik + '_use_of_proceeds.txt'
-            item_dict['Metadata']['Company Description'] = cik + '_company_description.txt'
-
-            financials, filings = scrape_financials_and_filings(financials_url)
-            item_dict['Financials'] = financials
-            item_dict['Filing'] = filings
-            item_dict['Experts'] = scrape_experts(experts_url)
-
-            final_dict[cik] = item_dict
-            time.sleep(random.randint(1,3))
-        return final_dict
-
-    with ThreadPoolExecutor(max_workers=N) as exec:
-        json_result = exec.map(extract_NASDAQ_IPO_data, [iter(links)]*N)
-        final_dict  = reduce(lambda d1, d2: dict(d1, **d2), json_result)
-    return final_dict
-
-
-
     def scrape_company_overview(overview_url):
 
         ### Reading Company Overview tab
@@ -146,8 +107,48 @@ def extract_NASDAQ_IPO_data_threaded(links):
                 experts_dict[exp_type] = experts_dict[exp_type] + [row.xpath('.//td[2]//text()')[0]]
             else:
                 experts_dict[exp_type] = [row.xpath('.//td[2]//text()')[0]]
+            print([row.xpath('.//td[2]//text()')[0]])
 
         return experts_dict
+
+
+    def extract_NASDAQ_IPO_data(links):
+        """Main loop called from extract_NASDAQ_IPO_data_threaded()"""
+
+        final_dict = {}
+        for link in links:
+            if glob.glob(FILE_PATH + '/{}*'.format(str(link[0]))):
+                print("NASDAQ data exists for {}, skipping".format(str(link[0])))
+                continue
+
+            print("Getting data for: " + link[1].split('/')[-1])
+            url = overview_url = link[1]
+            financials_url = url + "?tab=financials"
+            experts_url = url + "?tab=experts"
+            item_dict = {}
+
+            company_overview_dict = scrape_company_overview(url)
+            item_dict['Company Overview'] = company_overview_dict
+            cik = company_overview_dict['CIK'][3:]
+
+            item_dict['Metadata'] = {}
+            item_dict['Metadata']['Use of Proceeds'] = cik + '_use_of_proceeds.txt'
+            item_dict['Metadata']['Company Description'] = cik + '_company_description.txt'
+
+            financials, filings = scrape_financials_and_filings(financials_url)
+            item_dict['Financials'] = financials
+            item_dict['Filing'] = filings
+            item_dict['Experts'] = scrape_experts(experts_url)
+
+            final_dict[cik] = item_dict
+            time.sleep(random.randint(1,3))
+        return final_dict
+
+    with ThreadPoolExecutor(max_workers=N) as exec:
+        json_result = exec.map(extract_NASDAQ_IPO_data, [iter(links)]*N)
+        final_dict  = reduce(lambda d1, d2: dict(d1, **d2), json_result)
+    return final_dict
+
 
 
 
@@ -268,7 +269,9 @@ if __name__=='__main__':
     # df = df_pricings[df_pricings['CIK'] == 'NA']
     # df.set_index('CIK', inplace=True)
     links = list(zip(df.index, df['URL']))
-    # final_dict = extract_NASDAQ_IPO_data_threaded(links)
+
+    # Scrapes data for new IPOs obtained from 'nasdaq_firm_list.py'
+    final_dict = extract_NASDAQ_IPO_data_threaded(links)
 
 
     FULLJSON = json.loads(open('full_json.txt').read())

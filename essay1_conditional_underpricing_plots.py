@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as cl
 import seaborn as sb
 import pandas as pd
+import numpy as np
 
 from scipy.stats.mstats import kruskalwallis
 from widgets import as_cash
@@ -113,16 +114,28 @@ if __name__=='__main__':
     df = pd.read_csv(BASEDIR + '/df.csv', dtype={'cik':object})
     df.set_index('cik', inplace=True)
 
+    df.drop(['1087294', '1368308'], inplace=1) # 1st update took longer than a year
+    df = df[df.days_to_first_price_change > 0]
+    df = df[df.days_to_first_price_change < 300]
+
+    under, above = [x[1] for x in dfu.groupby(['amends'])]
+
+    duration_keys = ["days_from_priced_to_listing",
+                    "days_to_final_price_revision",
+                    "days_to_first_price_update",
+                    "days_from_s1_to_listing",
+                    "days_to_first_price_change"]
+
     amendments = df[~df.size_of_first_price_update.isnull()]
     revisions = df[~df.size_of_final_price_revision.isnull()]
 
-    amendments['percent_final_price_revision'] *= 100
-    amendments['percent_first_price_update'] *= 100
-    amendments['close_return'] *= 100
+    # amendments['percent_final_price_revision'] *= 100
+    # amendments['percent_first_price_update'] *= 100
+    # amendments['close_return'] *= 100
 
-    revisions['percent_final_price_revision'] *= 100
-    revisions['percent_first_price_update'] *= 100
-    revisions['close_return'] *= 100
+    # revisions['percent_final_price_revision'] *= 100
+    # revisions['percent_first_price_update'] *= 100
+    # revisions['close_return'] *= 100
 
 
 
@@ -251,7 +264,7 @@ def underwriter_facet_plots():
             c=common[2], s=12, label='Rank: 8.5+')
     plt.xlim(-80,80)
     plt.ylim(-80,80)
-    plt.xlabel('First Price Update (%)')
+    plt.xlabel('First Price Amendment (%)')
     plt.ylabel('Final Price Revision (%)')
     plt.legend()
 
@@ -261,11 +274,12 @@ def histograms_price_update_plot():
     'Plots price-update histograms'
 
     colors2 = sb.color_palette("husl")
+    c = sb.color_palette("deep")
 
     ###### Price updates
     m, s = amendments['size_of_first_price_update'].mean(), amendments['size_of_first_price_update'].std()
     plt.hist(amendments['size_of_first_price_update'],
-                bins=63, alpha=0.6, color=common[1], label="First Price Update\n  μ = {:.2f}\n  σ = {:.2f}\n  N = {}".format(m, s, len(amendments)))
+                bins=63, alpha=0.6, color=c[3], label="First Price Update\n  μ = {:.2f}\n  σ = {:.2f}\n  N = {}".format(m, s, len(amendments)))
     # plt.xticks(xy[1])
     plt.legend()
     plt.xlim(-10,10)
@@ -284,12 +298,15 @@ def histograms_price_update_plot():
     plt.xlabel("Dollar Price Change ($)")
 
 
-    for cik in df.index:
-        if np.isnan(df.loc[cik, 'percent_first_price_update']):
-            df.loc[cik, 'pct_first_price_change'] = df.loc[cik, 'percent_final_price_revision']
-        else:
-            df.loc[cik, 'pct_first_price_change'] = df.loc[cik, 'percent_final_price_revision']
+    # for cik in df.index:
+    #     if np.isnan(df.loc[cik, 'percent_first_price_update']):
+    #         df.loc[cik, 'pct_first_price_change'] = df.loc[cik, 'percent_final_price_revision']
+    #     else:
+    #         df.loc[cik, 'pct_first_price_change'] = df.loc[cik, 'percent_final_price_revision']
 
+
+
+    plt.plot(df.percent_first_price_update, df.percent_final_price_revision)
 
     # xy = sb.lmplot("underwriter_rank_single", "underwriter_rank_avg", data=df)
     # xy.set_xlabels("CM-Rank - Single Top Underwriter")
@@ -381,19 +398,29 @@ def plot_var_dist(plotargs, kkey, kw_xy=(20,20), color="muted"):
 
 
 
-def plot_kaplan_function():
+def plot_kaplan_function(duration_key):
 
     from lifelines.estimation import KaplanMeierFitter
     from lifelines.statistics import logrank_test
     import matplotlib.pyplot as plt
 
-    kmf = KaplanMeierFitter()
-    colors = sb.color_palette('colorblind')
 
-    # Amends
+    duration_keys = ["days_from_priced_to_listing",
+                    "days_to_final_price_revision",
+                    # "days_to_first_price_update",
+                    "days_from_s1_to_listing",
+                    "days_to_first_price_change"]
+    duration_key = duration_keys[-1]
+
+    kmf = KaplanMeierFitter()
     f, ax = plt.subplots(1,1,figsize=(12, 4), sharex=True)
     T = 1 # annotation line thickness
-    kmf.fit(amendments['days_to_first_price_update'], label='Updated', alpha=0.9)
+    xoffset = 0.4 # annotation offset (x-axis)
+    yoffset = 0.04
+
+
+    # Above filing price range
+    kmf.fit(above[duration_key], label='Upward Price Amendment: N={}'.format(len(above)), alpha=0.9)
     kmf.plot(ax=ax, c=colors[5], alpha=0.7)
 
     quartiles = [int(np.percentile(kmf.durations, x)) for x in [25, 50, 75]][::-1]
@@ -401,20 +428,57 @@ def plot_kaplan_function():
 
     plt.annotate("75%: {} days".format(quartiles[0]),
                 (quartiles[0], 0.25),
-                xytext=(quartiles[0]+26, 0.25+.04),
+                xytext=(quartiles[0]+xoffset, 0.25+yoffset),
                 arrowprops=aprops)
 
     plt.annotate("50%: {} days".format(quartiles[1]),
                 (quartiles[1], 0.50),
-                xytext=(quartiles[1]+26, 0.50-.06),
+                xytext=(quartiles[1]+xoffset, 0.50+yoffset),
                 arrowprops=aprops)
 
     plt.annotate("25%: {} days".format(quartiles[2]),
                 (quartiles[2], 0.75),
-                xytext=(quartiles[2]+18, 0.75-0.06),
+                xytext=(quartiles[2]+xoffset, 0.75+yoffset),
                 arrowprops=aprops)
 
 
+    # Under filing price range
+    kmf.fit(under[duration_key], label='Downward Price Amendment: N={}'.format(len(under)),)
+    kmf.plot(ax=ax, c=colors[2], alpha=0.7)
+
+    quartiles = [int(np.percentile(kmf.durations, x)) for x in [25, 50, 75]][::-1]
+    aprops = dict(facecolor=colors[2], width=T, headwidth=T)
+
+    plt.annotate("75%: {} days".format(quartiles[0]),
+                (quartiles[0], 0.25),
+                xytext=(quartiles[0]+xoffset, 0.25+yoffset+0.05),
+                arrowprops=aprops)
+
+    plt.annotate("50%: {} days".format(quartiles[1]),
+                (quartiles[1], 0.50),
+                xytext=(quartiles[1]+xoffset, 0.50+yoffset+0.05),
+                arrowprops=aprops)
+
+    plt.annotate("25%: {} days".format(quartiles[2]),
+                (quartiles[2], 0.75),
+                xytext=(quartiles[2]+xoffset, 0.75+yoffset+0.05),
+                arrowprops=aprops)
+
+
+    # log rank tests + general graph labels
+    # summary, p_value, results = logrank_test(
+    #                                 above[duration_key],
+    #                                 within[duration_key],
+    #                                 under[duration_key],
+    #                                 alpha=0.95)
+    # ax.annotate("Log-rank test: (prob={p:.3f})".format(p=p_value),
+    #             xy=(1210, 0.08))
+
+    plt.ylim(0,1)
+    plt.xlim(0, max(np.percentile(above[duration_key], 90), np.percentile(under[duration_key],90)))
+    plt.title("Kaplan-Meier Survival Functions")
+    plt.xlabel("Delay (days) in {}".format(duration_key))
+    plt.ylabel(r"$S(t)=Pr(T>t)$")
 
 
 

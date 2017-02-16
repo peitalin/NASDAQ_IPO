@@ -87,12 +87,16 @@ VNAME = {
     'pct_first_price_change_up': 'First Price Update (up)',
     'pct_first_price_change_down': 'First Price Update (down)',
     'prange_change_plus': 'Price Range Change',
+    'original_prange_size': 'Price Range',
     'number_of_price_updates': 'No. Price Amendments',
     'number_of_price_updates_up': 'No. Price Updates (up)',
     'number_of_price_updates_down': 'No. Price Updates (down)',
     'delay_in_price_update' : 'Delay in 1st price update',
     'log(days_from_s1_to_listing)': 'log(Days from S-1 to Listing)',
     'underwriter_rank_avg': 'Underwriter Rank',
+    'underwriter_collective_rank': 'Underwriter Rank (Group)',
+    'underwriter_num_leads': '#Lead Underwriters',
+    'underwriter_syndicate_size': '#Syndicate Members',
     'VC': 'Venture Capital',
     'confidential_IPO': 'Confidential IPO',
     'share_overhang': 'Share Overhang',
@@ -133,14 +137,19 @@ if __name__=='__main__':
 
 
     df = pd.read_csv("df.csv", dtype={'cik':object, 'Year':object, 'SIC':object})
+    df.set_index("cik", inplace= True)
     # df['original_prange'] = [eval(x) if type(x)==str else [] for x in df['original_prange']]
     # df = df[[True if len(x)>1 else False for x in df.original_prange]]
     # dfu = pd.read_csv("df_update.csv", dtype={'cik':object, 'Year':object, 'SIC':object})
     # dfl = pd.read_csv("dfl.csv", dtype={'cik':object, 'Year':object, 'SIC':object})
 
-    df.set_index("cik", inplace=1)
     # # dfu.set_index("cik", inplace=1)
     # dfl.set_index("cik", inplace=1)
+
+    df['log(days_from_s1_to_listing)'] = log(df["days_from_s1_to_listing"])
+    df['log(proceeds)'] = log(df['proceeds'])
+    df['log(1 + sales)'] = log(1+df['sales'])
+    df['CASI'] = df['IoT_15day_CASI_weighted_finance']
 
     dup = df[df['size_of_first_price_update'].notnull()]
     dnone = df[df['prange_change_first_price_update'].isnull()]
@@ -152,8 +161,9 @@ if __name__=='__main__':
 
 def xls_empirics(lm, column='C', sheet='15dayCASI', model_type='lm', cluster=('FF49_industry',), sigstars=True):
 
-    from xlwings import Workbook, Range, Sheet
-    wb = Workbook(os.path.join(BASEDIR, "xl_empirics.xlsx"))
+    from xlwings import Book, Range, Sheet
+
+    wb = Book(os.path.join(BASEDIR, "xl_empirics.xlsx"))
     Sheet(sheet).activate()
     column = column.upper()
 
@@ -403,7 +413,7 @@ def OLS_final_revisions(days=15):
             # 'CASI:delay_in_price_update',
             'priceupdate_up',
             'priceupdate_down',
-            # 'log(days_from_s1_to_listing)',
+            'log(days_from_s1_to_listing)',
             # 'delay_in_price_update',
             'underwriter_rank_avg',
             'VC',
@@ -425,7 +435,7 @@ def OLS_final_revisions(days=15):
     ALLVAR = [
             'Year',
             'FF49_industry',
-            # 'log(days_from_s1_to_listing)',
+            'log(days_from_s1_to_listing)',
             'underwriter_rank_avg',
             'VC',
             'media_1st_pricing',
@@ -497,7 +507,7 @@ def OLS_final_revisions(days=15):
     ALLVAR = [
             'Year',
             'FF49_industry',
-            # 'log(days_from_s1_to_listing)',
+            'log(days_from_s1_to_listing)',
             'underwriter_rank_avg',
             'VC',
             'media_1st_pricing',
@@ -528,7 +538,7 @@ def OLS_final_revisions(days=15):
     ALLVAR = [
             'Year',
             'FF49_industry',
-            # 'log(days_from_s1_to_listing)',
+            'log(days_from_s1_to_listing)',
             'underwriter_rank_avg',
             'VC',
             'media_1st_pricing',
@@ -638,12 +648,9 @@ def OLS_initial_returns():
         source("clmclx.R")
         df <- data.table::fread("df.csv", colClasses=c(cik="character", SIC="character", Year="factor"))
         df <- df[df$close_return < 200]
-        ## df <- df[df$close_return > -30]
-        ## df <- df[!is.na(df$percent_first_price_update)]
-        ## dfR <- df[df$amends != "None"]
+
 
         dfR <- df
-        # dfR <- dfR[dfR$IoT_15day_CASI_weighted_finance != 0]
 
         #### CENTERING VARIABLES
         dfR$IoT_15day_CASI_weighted_finance <- dfR$IoT_15day_CASI_weighted_finance - mean(dfR$IoT_15day_CASI_weighted_finance)
@@ -683,20 +690,46 @@ def OLS_initial_returns():
 
     # Fit controls only
 
+    # col = 'D'
+    # XVAR = [
+    # 'pct_final_revision_up',
+    # 'pct_final_revision_down',
+    # IOTKEY,
+    # 'np.square({})'.format(IOTKEY)
+    # ]
+    # X = " + ".join(XVAR + CONTROLS)
+    # lm = 'close_return ~ ' + X
+    # xls_empirics(lm, column=col, sheet='initial_returns'+str(days), cluster=clusterby)
+
+
+    # col = 'E'
+    # XVAR = [IOTKEY,
+    # 'np.square({})'.format(IOTKEY),
+    # '%s:%s' % (IOTKEY, 'priceupdate_up'),
+    # '%s:%s' % (IOTKEY, 'priceupdate_down'),
+    # 'priceupdate_up',
+    # 'priceupdate_down',
+    # ]
+    # X = " + ".join(CONTROLS + XVAR)
+    # lm = 'close_return ~ ' + X
+    # xls_empirics(lm, column=col, sheet='initial_returns'+str(days), cluster=clusterby)
+
     col = 'D'
     XVAR = [
-    'pct_final_revision_up',
-    'pct_final_revision_down',
     IOTKEY,
-    'np.square({})'.format(IOTKEY)
+    'np.square({})'.format(IOTKEY),
+    # '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
+    # '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
+    # 'pct_final_revision_up',
+    # 'pct_final_revision_down',
     ]
-    X = " + ".join(XVAR + CONTROLS)
+    X = " + ".join(CONTROLS + XVAR)
     lm = 'close_return ~ ' + X
     xls_empirics(lm, column=col, sheet='initial_returns'+str(days), cluster=clusterby)
 
-
     col = 'E'
-    XVAR = [IOTKEY,
+    XVAR = [
+    IOTKEY,
     'np.square({})'.format(IOTKEY),
     '%s:%s' % (IOTKEY, 'priceupdate_up'),
     '%s:%s' % (IOTKEY, 'priceupdate_down'),
@@ -709,7 +742,8 @@ def OLS_initial_returns():
 
 
     col = 'F'
-    XVAR = [IOTKEY,
+    XVAR = [
+    IOTKEY,
     'np.square({})'.format(IOTKEY),
     '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
     '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
@@ -722,6 +756,161 @@ def OLS_initial_returns():
 
 
 
+
+
+
+def OLS_initial_volatility():
+
+    ##############################################
+    # Initial volatility regression
+    # Interaction: CASI * Final_price_revision
+
+
+
+    VORDER = [
+        'Intercept',
+        'CASI',
+        'np.square(CASI)',
+
+        'CASI:priceupdate_up',
+        'CASI:priceupdate_down',
+        'priceupdate_up',
+        'priceupdate_down',
+
+        'CASI:pct_final_revision_up',
+        'CASI:pct_final_revision_down',
+        'pct_final_revision_up',
+        'pct_final_revision_down',
+
+        # 'CASI:number_of_price_updates_up',
+        # 'CASI:number_of_price_updates_down',
+        'number_of_price_updates_up',
+        'number_of_price_updates_down',
+
+        'log(days_from_s1_to_listing)',
+        'underwriter_rank_avg',
+        'VC',
+        # 'confidential_IPO',
+        'media_listing',
+        'share_overhang',
+        'log(proceeds)',
+        'log(1 + sales)',
+        'EPS',
+        'M3_indust_rets',
+        'M3_initial_returns',
+        'Nobs',
+        'Rsq',
+    ]
+    VARS = VORDER
+    VROW = dict(zip(VARS, [str(n) for n in range(4,100,2)]))
+
+
+
+    CONTROLS = [
+        'Year',
+        'FF49_industry',
+        'log(days_from_s1_to_listing)',
+        'number_of_price_updates_up',
+        'number_of_price_updates_down',
+        'underwriter_rank_avg',
+        'VC',
+        'share_overhang',
+        'log(proceeds)',
+        'log(1 + sales)',
+        'media_listing',
+        'EPS',
+        'M3_indust_rets',
+        'M3_initial_returns', # 13
+        ]
+
+
+    from rpy2.robjects import r
+    list(map(r, """
+        require(sandwich)
+        require(lmtest)
+        require(plm)
+        source("clmclx.R")
+        df <- data.table::fread("df.csv", colClasses=c(cik="character", SIC="character", Year="factor"))
+        df <- df[df$close_return < 200]
+
+
+        dfR <- df
+
+        #### CENTERING VARIABLES
+        dfR$IoT_15day_CASI_weighted_finance <- dfR$IoT_15day_CASI_weighted_finance - mean(dfR$IoT_15day_CASI_weighted_finance)
+        dfR$IoT_30day_CASI_weighted_finance <- dfR$IoT_30day_CASI_weighted_finance - mean(dfR$IoT_30day_CASI_weighted_finance)
+
+        dfR$priceupdate_up <- dfR$priceupdate_up - mean(dfR$priceupdate_up)
+        dfR$priceupdate_down <- dfR$priceupdate_down - mean(dfR$priceupdate_down)
+
+        dfR$pct_final_revision_up <- dfR$pct_final_revision_up - mean(dfR$pct_final_revision_up)
+        dfR$pct_final_revision_down <- dfR$pct_final_revision_down - mean(dfR$pct_final_revision_down)
+
+        # Partialling out media_listing effect on IOT
+        # Regress IOT ~ media_listing and take residuals to use in regression
+        dfR$IoT_15day_CASI_weighted_finance <- lm(dfR$IoT_15day_CASI_weighted_finance ~ dfR$media_listing )$residuals
+        dfR$IoT_30day_CASI_weighted_finance <- lm(dfR$IoT_30day_CASI_weighted_finance ~ dfR$media_listing )$residuals
+
+        dfR$IoT_15day_CASI_all <- lm(dfR$IoT_15day_CASI_all ~ dfR$media_listing )$residuals
+        dfR$IoT_30day_CASI_all <- lm(dfR$IoT_30day_CASI_all ~ dfR$media_listing )$residuals
+
+        dfR$IoT_15day_CASI_news <- lm(dfR$IoT_15day_CASI_news ~ dfR$media_listing )$residuals
+        dfR$IoT_30day_CASI_news <- lm(dfR$IoT_30day_CASI_news ~ dfR$media_listing )$residuals
+
+        ##""".split('\n')))
+
+    # clusterby = ('FF49_industry', 'Year')
+    clusterby = ('FF49_industry',)
+    # clusterby = ('underwriter_rank_avg',)
+    # clusterby = ('Year',)
+    # clusterby = ('HC1',)
+    # clusterby = ''
+    # days = 15
+    # days = 30
+    IOTKEY = 'IoT_{days}day_CASI_weighted_finance'.format(days=days)
+    # IOTKEY = 'IoT_{days}day_CASI_all'.format(days=days)
+    # IOTKEY = 'IoT_{days}day_CASI_news'.format(days=days)
+
+
+    col = 'D'
+    XVAR = [
+    IOTKEY,
+    'np.square({})'.format(IOTKEY),
+    # '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
+    # '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
+    # 'pct_final_revision_up',
+    # 'pct_final_revision_down',
+    ]
+    X = " + ".join(CONTROLS + XVAR)
+    lm = 'stddev_prices_10day ~ ' + X
+    xls_empirics(lm, column=col, sheet='initial_volatility'+str(days), cluster=clusterby)
+
+    col = 'E'
+    XVAR = [
+    IOTKEY,
+    'np.square({})'.format(IOTKEY),
+    '%s:%s' % (IOTKEY, 'priceupdate_up'),
+    '%s:%s' % (IOTKEY, 'priceupdate_down'),
+    'priceupdate_up',
+    'priceupdate_down',
+    ]
+    X = " + ".join(CONTROLS + XVAR)
+    lm = 'stddev_prices_10day ~ ' + X
+    xls_empirics(lm, column=col, sheet='initial_volatility'+str(days), cluster=clusterby)
+
+
+    col = 'F'
+    XVAR = [
+    IOTKEY,
+    'np.square({})'.format(IOTKEY),
+    '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
+    '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
+    'pct_final_revision_up',
+    'pct_final_revision_down',
+    ]
+    X = " + ".join(CONTROLS + XVAR)
+    lm = 'stddev_prices_10day ~ ' + X
+    xls_empirics(lm, column=col, sheet='initial_volatility'+str(days), cluster=clusterby)
 
 
 
@@ -875,73 +1064,159 @@ def HLM_initial_returns():
 
 
 
+def HLM_initial_volatility():
 
 
+    VORDER = [
+        '(Intercept)',
+        'CASI',
+        'I(CASI^2)',
 
+        # 'CASI:priceupdate_up',
+        # 'CASI:priceupdate_down',
+        # 'priceupdate_up',
+        # 'priceupdate_down',
 
-
-
-
-
-
-
-def corrmatrix():
-
-    iotkeys = [
-            'IoT_15day_CASI_weighted_finance',
-            'IoT_30day_CASI_weighted_finance',
-            'IoT_15day_CASI_all',
-            'IoT_30day_CASI_all',
-            'IoT_15day_CASI_news',
-            'IoT_30day_CASI_news'
-        ]
-    df[iotkeys].corr()
-
-    df['log(days_from_s1_to_listing)'] = log(df.days_from_s1_to_listing)
-    df['log(proceeds)'] = log(df.proceeds)
-
-    CASI = df['IoT_15day_CASI_weighted_finance']
-    CASI30 = df['IoT_30day_CASI_weighted_finance']
-    P = df['priceupdate_up']
-    FRP = df['pct_final_revision_up']
-
-    df['CASIxP'] =  CASI * P
-    df['CASIxFRP'] = CASI * FRP
-
-    df['CASIxP'] =  (CASI - CASI.mean()) * (P - P.mean())
-    df['CASIxFRP'] = (CASI - CASI.mean()) * (FRP - FRP.mean())
-
-    df['CASIxP_30'] =  (CASI30 - CASI30.mean()) * (P - P.mean())
-    df['CASIxFRP_30'] = (CASI30 - CASI30.mean()) * (FRP - FRP.mean())
-
-    df['log(1+sales)'] = log(df.sales + 1)
-
-    design_vars = [
-        'IoT_15day_CASI_weighted_finance',
-        'IoT_30day_CASI_weighted_finance',
-        'CASIxP',
-        'CASIxFRP',
-        'priceupdate_up',
+        'CASI:pct_final_revision_up',
+        'CASI:pct_final_revision_down',
         'pct_final_revision_up',
+        'pct_final_revision_down',
+
         'number_of_price_updates_up',
         'number_of_price_updates_down',
-        'EPS',
-        'VC',
-        'underwriter_rank_avg',
-        'share_overhang',
-        'log(proceeds)',
-        'log(1+sales)',
+
         'log(days_from_s1_to_listing)',
+        'underwriter_rank_avg',
+        'VC',
         # 'confidential_IPO',
         'media_listing',
+        'share_overhang',
+        'log(proceeds)',
+        'log(1 + sales)',
+        'EPS',
         'M3_indust_rets',
-        'M3_initial_returns'
+        'M3_initial_returns',
+        'Nobs',
+        'AIC',
+        'RandEffects'
+    ]
+    VARS = VORDER
+    VROW = dict(zip(VARS, [str(n) for n in range(4,100,2)]))
+
+
+    CONTROLS = [
+        'Year',
+        'log(days_from_s1_to_listing)',
+        'number_of_price_updates_up',
+        'number_of_price_updates_down',
+        'underwriter_rank_avg',
+        'VC',
+        'share_overhang',
+        'log(proceeds)',
+        'log(1 + sales)',
+        # 'confidential_IPO',
+        'media_listing',
+        'EPS',
+        'M3_indust_rets',
+        'M3_initial_returns', # 13
         ]
 
-    df[design_vars].corr()[['IoT_15day_CASI_weighted_finance',
-        'IoT_30day_CASI_weighted_finance', 'CASIxP', 'CASIxFRP', 'priceupdate_up', 'pct_final_revision_up',]].to_csv("corr_matrix_interactions.csv")
 
-    df[iotkeys + design_vars].corr().to_csv("corr_matrix.csv")
+    from rpy2.robjects import r
+    list(map(r, """
+        require(lme4)
+        require(lmerTest)
+        require(nlme)
+
+        df <- data.table::fread("df.csv", colClasses=c(cik="character", SIC="character", Year="factor"))
+        dfR <- df[df$close_return < 200]
+
+        #### CENTERING VARIABLES
+        dfR$IoT_15day_CASI_weighted_finance <- dfR$IoT_15day_CASI_weighted_finance - mean(dfR$IoT_15day_CASI_weighted_finance)
+        dfR$IoT_30day_CASI_weighted_finance <- dfR$IoT_30day_CASI_weighted_finance - mean(dfR$IoT_30day_CASI_weighted_finance)
+
+        dfR$priceupdate_up <- dfR$priceupdate_up - mean(dfR$priceupdate_up)
+        dfR$priceupdate_down <- dfR$priceupdate_down - mean(dfR$priceupdate_down)
+
+        dfR$pct_final_revision_up <- dfR$pct_final_revision_up - mean(dfR$pct_final_revision_up)
+        dfR$pct_final_revision_down <- dfR$pct_final_revision_down - mean(dfR$pct_final_revision_down)
+
+        # Partialling out media_listing effect on IOT
+        # Regress IOT ~ media_listing and take residuals to use in regression
+        dfR$IoT_15day_CASI_weighted_finance <- lm(dfR$IoT_15day_CASI_weighted_finance ~ dfR$media_listing )$residuals
+        dfR$IoT_30day_CASI_weighted_finance <- lm(dfR$IoT_30day_CASI_weighted_finance ~ dfR$media_listing )$residuals
+
+        dfR$IoT_15day_CASI_all <- lm(dfR$IoT_15day_CASI_all ~ dfR$media_listing )$residuals
+        dfR$IoT_30day_CASI_all <- lm(dfR$IoT_30day_CASI_all ~ dfR$media_listing )$residuals
+
+        dfR$IoT_15day_CASI_news <- lm(dfR$IoT_15day_CASI_news ~ dfR$media_listing )$residuals
+        dfR$IoT_30day_CASI_news <- lm(dfR$IoT_30day_CASI_news ~ dfR$media_listing )$residuals
+
+        ##""".split('\n')))
+
+
+    days = 15
+    IOTKEY = 'IoT_{days}day_CASI_weighted_finance'.format(days=days)
+    # IOTKEY = 'IoT_{days}day_CASI_all'.format(days=days)
+    # IOTKEY = 'IoT_{days}day_CASI_news'.format(days=days)
+
+
+    # Varying intercept only
+    col = 'D'
+    XVAR = [
+            IOTKEY,
+            'np.square({})'.format(IOTKEY),
+            '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
+            '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
+            'pct_final_revision_up',
+            'pct_final_revision_down',
+            ]
+    X = " + ".join(XVAR + CONTROLS)
+    lm = 'stddev_prices_10day ~ ' + X + ' + (1 | FF49_industry)'
+    xls_empirics(lm, column=col, sheet='mixed_model_volatility', model_type='lmer')
+
+
+    # Varying IOTKEY slope
+    col = 'F'
+    XVAR = [
+            IOTKEY,
+            'np.square({})'.format(IOTKEY),
+            '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
+            '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
+            'pct_final_revision_up',
+            'pct_final_revision_down',
+            ]
+    X = " + ".join(XVAR + CONTROLS)
+    lm = 'stddev_prices_10day ~ ' + X + ' + ({} - 1 | FF49_industry)'.format(IOTKEY)
+    xls_empirics(lm, column=col, sheet='mixed_model_volatility', model_type='lmer')
+
+
+    # Varying intercept + IOTKEY slope
+    col = 'H'
+    XVAR = [
+            IOTKEY,
+            'np.square({})'.format(IOTKEY),
+            '%s:%s' % (IOTKEY, 'pct_final_revision_up'),
+            '%s:%s' % (IOTKEY, 'pct_final_revision_down'),
+            'pct_final_revision_up',
+            'pct_final_revision_down',
+            ]
+    X = " + ".join(XVAR + CONTROLS)
+    lm = 'stddev_prices_10day ~ ' + X + ' + (1 + {} | FF49_industry)'.format(IOTKEY)
+    xls_empirics(lm, column=col, sheet='mixed_model_volatility', model_type='lmer')
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -969,7 +1244,8 @@ def pythontests_timing_1st_price_update():
             'delay_in_price_update',
             'underwriter_rank_avg',
             'underwriter_syndicate_size',
-            'underwriter_num_leads',
+            # 'underwriter_num_leads',
+            'prange_change_pct',
             'VC',
             'confidential_IPO',
             'Year',
@@ -984,24 +1260,28 @@ def pythontests_timing_1st_price_update():
         ]
 
     X = " + ".join(ALLVAR)
-    lm = smf.ols('percent_first_price_update ~ ' + X, data=df).fit()
+    lm = smf.ols('close_return ~ ' + X, data=df).fit()
     rlm = lm.get_robustcov_results()
     rlm.summary()
 
 
 
-    # Dependent Variable: Prange change
-    # Independent Variable: DELAY
+
+
+
+    # Dependent Variable: days_to_first_price_update
+    # Independent Variable: syndicate size
     ALLVAR = [
             'log(days_from_s1_to_listing)',
-            'delay_in_price_update',
+            # 'delay_in_price_update',
             'underwriter_rank_avg',
             'underwriter_syndicate_size',
             'underwriter_num_leads',
+            'prange_change_pct',
             'VC',
-            'confidential_IPO',
+            # 'confidential_IPO',
             'Year',
-            'FF49_industry',
+            # 'FF49_industry',
             'share_overhang',
             'log(proceeds)',
             'EPS',
@@ -1011,13 +1291,10 @@ def pythontests_timing_1st_price_update():
             'np.square(%s)' % IOTKEY,
         ]
 
-
     X = " + ".join(ALLVAR)
-    lm = smf.ols('prange_change_pct ~ ' + X, data=df).fit()
+    lm = smf.ols('days_to_first_price_change ~ ' + X, data=dfu).fit()
     rlm = lm.get_robustcov_results()
     rlm.summary()
-
-
 
 
 
@@ -1110,13 +1387,17 @@ def xls_price_updates():
         'Intercept',
         'CASI',
         'np.square(CASI)',
+        # 'CASI:delay_in_price_update',
+        # 'CASI:pct_final_revision_up',
+        # 'CASI:log(days_from_s1_to_listing)',
         'delay_in_price_update',
         'log(days_from_s1_to_listing)',
         'underwriter_rank_avg',
+        # 'underwriter_collective_rank',
         'underwriter_num_leads',
         'underwriter_syndicate_size',
+        # 'pct_final_revision_up',
         'VC',
-        'confidential_IPO',
         'share_overhang',
         'log(proceeds)',
         'log(1 + sales)',
@@ -1133,23 +1414,22 @@ def xls_price_updates():
     ###############################################
     # First price update regression
 
-    # dup = dfu[dfu['prange_change_first_price_update'].notnull()]
-    dup = dfu[dfu['size_of_first_price_update'].notnull()]
+    # dup = df[df['prange_change_first_price_update'].notnull()]
+    dup = df[df['size_of_first_price_update'].notnull()]
 
 
-    ALLVAR = [
+    CONTROLVAR = [
             'Year',
             'log(days_from_s1_to_listing)',
             'underwriter_rank_avg',
+            # 'underwriter_collective_rank',
             'underwriter_num_leads',
             'underwriter_syndicate_size',
+            # 'pct_final_revision_up',
             'VC',
-            'confidential_IPO',
             'share_overhang',
             'log(proceeds)',
-            'log(market_cap)',
             'log(1 + sales)',
-            'liab_over_assets',
             'EPS',
             'M3_indust_rets',
             'M3_initial_returns', # 13
@@ -1168,10 +1448,12 @@ def xls_price_updates():
 
 
 
+    YVAR = 'percent_first_price_update'
+    # YVAR = 'close_return'
     # Fit controls only
-    for i, col in zip([13,14], 'CD'):
-        X = " + ".join(ALLVAR[:i])
-        lm = 'percent_first_price_update ~ ' + X
+    for i, col in zip([11,12], 'CD'):
+        X = " + ".join(CONTROLVAR[:i])
+        lm = YVAR + ' ~ ' + X
         xls_empirics(lm, column=col, sheet='updates_CASI', cluster='FF49_industry')
 
 
@@ -1179,9 +1461,14 @@ def xls_price_updates():
     for model, col in zip(models, 'FGIJ'):
         days, i = model
         IOTKEY = 'IoT_{days}day_CASI_weighted_finance'.format(days=days)
-        XVAR = [IOTKEY, 'np.square({})'.format(IOTKEY), '{}:{}'.format(IOTKEY, 'VC')]
-        X = " + ".join(ALLVAR + XVAR[:i])
-        lm = 'percent_first_price_update ~ ' + X
+        XVAR = [IOTKEY,
+                'np.square({})'.format(IOTKEY),
+                # '{}:{}'.format(IOTKEY, 'delay_in_price_update'),
+                # '{}:{}'.format(IOTKEY, 'pct_final_revision_up'),
+                # '{}:{}'.format(IOTKEY, 'log(days_from_s1_to_listing)')
+                ]
+        X = " + ".join(CONTROLVAR + XVAR[:i])
+        lm = YVAR + ' ~ ' + X
         xls_empirics(lm, column=col, sheet='updates_CASI', cluster='FF49_industry')
 
 
@@ -1197,7 +1484,6 @@ def xls_price_updates():
     It appears that delayed issues are strongly less likely to update prices upwards,
     issues that attract more attention are more likely to experience upwards amendments
     """
-
 
 
 
@@ -1254,28 +1540,78 @@ def xls_price_updates():
 
 
 
-    # dfu['percent_final_price_revision'] *= 100
-    # dfu['percent_first_price_update'] *= 100
-
-    # df['percent_final_price_revision'] *= 100
-    # df['percent_first_price_update'] *= 100
-
-    # dfu['M3_indust_rets'] *= 100
-    # dfu['M3_initial_returns'] *= 100
-    # dfu['close_return'] *= 100
-    # dfu['open_return'] *= 100
-    # dfu['priceupdate_down'] *= 100
-    # dfu['priceupdate_up'] *= 100
-    # dfu['pct_final_revision_down'] *= 100
-    # dfu['pct_final_revision_up'] *= 100
 
 
-    # df['M3_indust_rets'] *= 100
-    # df['M3_initial_returns'] *= 100
-    # df['close_return'] *= 100
-    # df['open_return'] *= 100
-    # df['priceupdate_down'] *= 100
-    # df['priceupdate_up'] *= 100
-    # df['pct_final_revision_down'] *= 100
-    # df['pct_final_revision_up'] *= 100
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+def corrmatrix():
+    iotkeys = [
+            'IoT_15day_CASI_weighted_finance',
+            'IoT_30day_CASI_weighted_finance',
+            'IoT_15day_CASI_all',
+            'IoT_30day_CASI_all',
+            'IoT_15day_CASI_news',
+            'IoT_30day_CASI_news'
+        ]
+    df[iotkeys].corr()
+
+    df['log(days_from_s1_to_listing)'] = log(df.days_from_s1_to_listing)
+    df['log(proceeds)'] = log(df.proceeds)
+
+    CASI = df['IoT_15day_CASI_weighted_finance']
+    CASI30 = df['IoT_30day_CASI_weighted_finance']
+    P = df['priceupdate_up']
+    FRP = df['pct_final_revision_up']
+
+    df['CASIxP'] =  CASI * P
+    df['CASIxFRP'] = CASI * FRP
+
+    df['CASIxP'] =  (CASI - CASI.mean()) * (P - P.mean())
+    df['CASIxFRP'] = (CASI - CASI.mean()) * (FRP - FRP.mean())
+
+    df['CASIxP_30'] =  (CASI30 - CASI30.mean()) * (P - P.mean())
+    df['CASIxFRP_30'] = (CASI30 - CASI30.mean()) * (FRP - FRP.mean())
+
+    df['log(1+sales)'] = log(df.sales + 1)
+
+    design_vars = [
+        'IoT_15day_CASI_weighted_finance',
+        'IoT_30day_CASI_weighted_finance',
+        'CASIxP',
+        'CASIxFRP',
+        'priceupdate_up',
+        'pct_final_revision_up',
+        'number_of_price_updates_up',
+        'number_of_price_updates_down',
+        'EPS',
+        'VC',
+        'underwriter_rank_avg',
+        'share_overhang',
+        'log(proceeds)',
+        'log(1+sales)',
+        'log(days_from_s1_to_listing)',
+        # 'confidential_IPO',
+        'media_listing',
+        'M3_indust_rets',
+        'M3_initial_returns'
+        ]
+
+    df[design_vars].corr()[['IoT_15day_CASI_weighted_finance',
+        'IoT_30day_CASI_weighted_finance', 'CASIxP', 'CASIxFRP', 'priceupdate_up', 'pct_final_revision_up',]].to_csv("corr_matrix_interactions.csv")
+
+    df[iotkeys + design_vars].corr().to_csv("corr_matrix.csv")
+
 

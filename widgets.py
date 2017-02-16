@@ -2,51 +2,146 @@
 
 import os
 import subprocess
+import json
 import re
+import glob
 import dateutil.parser
 import pandas as pd
-import progressbar
 
-from itertools          import count
+
 from functools          import wraps
-from ftplib             import FTP
-from blessings          import Terminal
-from progressbar        import ProgressBar, FileTransferSpeed, Percentage, Bar
 from concurrent.futures import ProcessPoolExecutor
 from fuzzywuzzy         import fuzz, process
 
-if float(progressbar.__version__[:3]) > 2.3:
-    from progressbar import SimpleProgress
-else:
-    SimpleProgress = Percentage
-
-N = 6
-parse_date = lambda datestr: dateutil.parser.parse(datestr).date()
-join_tools = lambda iterable: sum([[x,' '] for x in iterable], [])
-TermOffset = lambda y: Terminal().location(0, Terminal().height - y)
-FTPWidget  = [' ', Percentage(), Bar(), FileTransferSpeed()]
-GrepWidget = [' ', Percentage(), Bar(), SimpleProgress()]
-FTPWidget  = join_tools(FTPWidget)
-GrepWidget = join_tools(GrepWidget)
 
 
-class Writer(object):
-    """Starts progressbar at specific point on the screen."""
-    def __init__(self, y_point):
-        """Input: tuple (x, y): position to start progressbar in the terminal.
-        Writer((2,5)) -> start progressbar on line 5, 2 spaces in."""
-        self.y_point = y_point
+if '__price_range_parsing_functions':
 
-    def write(self, string):
-        with TermOffset(self.y_point):
-            print(string, end=' ')
+    def fix_bad_str(string):
+        """ Formats nuisance characters. """
+        if string:
+            # These are various long dash characters used in the document
+            for r in [r'\x97', r'\x96', r'[-]+', r'●']:
+                string = re.sub(r, '-', string)
+            # Other nuisance chars
+            string = re.sub(r'\x95', '->', string)
+            string = re.sub(r'\x93', '"', string)
+            string = re.sub(r'\x94', '"', string)
+            string = re.sub(r'/s/', '', string)
+            string = re.sub(r'\x92', "'", string)
+            string = re.sub(r'\xa0', ' ', string)
+            string = re.sub(r'\u200b', '', string)
+            string = re.sub(r'\s+', ' ', string)
+        return string.strip()
+
+    def fix_dollars(string_list):
+        """Split and strip a string, appending dollar signs where necessary"""
+
+        new_strlist = []
+        prepend_next = False
+        for s in string_list:
+            s = re.sub(r'^(U[\.]?S[\.]?)?\$\s*', '$', s)
+            if s.strip() == '$':
+                prepend_next = True
+                continue
+            new_str = ' '.join(e.strip() for e in s.split('\n'))
+            if prepend_next == True:
+                if not new_str.startswith('$'):
+                    new_str = '$' + new_str
+                prepend_next = False
+
+            new_strlist += [new_str]
+        return new_strlist
 
 
-def GrepProgressbar(enum, df):
-    progbar = ProgressBar(fd=Writer(enum+1),
-                          maxval=len(df),
-                          widgets=GrepWidget)
-    return progbar.start()
+    def as_cash(string):
+        if '$' not in string:
+            return None
+        string = string.replace('$','').replace(',','')
+        return float(string) if string.strip() else None
+
+
+    def view_filing(filename):
+        FILEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ", "filings")
+        filename = filename.split('/')[-2:]
+        filename = os.path.join(*[FILEDIR] + filename)
+        newfilename = '/Users/peitalin/Public/' + filename.split('/')[-1] + '.html'
+        os.system("cp {0} {1}".format(filename, newfilename))
+        os.system("open -a Firefox {}".format(newfilename))
+
+
+
+if 'excel_cell_movement_functions':
+
+    def next_row(char, n=1):
+        "Shifts cell reference by n rows."
+
+        is_xls_cell = re.compile(r'^[A-Z].*[0-9]$')
+        if not is_xls_cell.search(char):
+            raise(Exception("'{}' is not a valid cell".format(char)))
+
+        if n == 0:
+            return char
+
+        idx = [i for i,x in enumerate(char) if x.isdigit()][0]
+        if int(char[idx:]) + n < 0:
+            return char[:idx] + '1'
+        else:
+            return char[:idx] + str(int(char[idx:]) + n)
+
+    def next_col(char, n=1):
+        "Shifts cell reference by n columns."
+
+        is_xls_cell = re.compile(r'^[A-Z].*[0-9]$')
+        if not is_xls_cell.search(char):
+            raise(Exception("'{}' is not a valid cell".format(char)))
+
+        if n == 0:
+            return char
+
+        def next_char(char):
+            "Next column in excel"
+            if all(c=='Z' for c in char):
+                return 'A' * (len(char) + 1)
+            elif len(char) == 1:
+                return chr(ord(char) + 1)
+            elif char.endswith('Z'):
+                return next_char(char[:-1]) + 'A'
+            else:
+                return 'A' + next_char(char[1:])
+
+        def prev_char(char):
+            "Previous column in excel"
+            if len(char) == 1:
+                return chr(ord(char) - 1) if char != 'A' else ''
+            elif not char.endswith('A'):
+                return char[:-1] + prev_char(char[-1])
+            elif char.endswith('A'):
+                return prev_char(char[:-1]) + 'Z'
+
+        idx = [i for i,x in enumerate(char) if x.isdigit()][0]
+        row = char[idx:]
+        col = char[:idx]
+        for i in range(abs(n)):
+            col = next_char(col) if n > 0 else prev_char(col)
+        return col + row
+
+
+
+def write_FINALJSON(FINALJSON):
+    "Backup FINALJSON.txt (final_json@@@@.txt) and save current FINALJSON json."
+    import shutil, glob
+    BASEDIR = os.path.join(os.path.expanduser("~"), "Data", "IPO", "NASDAQ")
+    src_file = os.path.join(BASEDIR, 'final_json.txt')
+    dest_file = glob.glob(os.path.join(BASEDIR, 'data') + \
+                 '/final_json@*')[-1].replace('@.', '@@.')
+    shutil.copy(src_file, dest_file)
+    print("Moving {} to {}".format(src_file, dest_file))
+    print("Saving current FINALJSON dictionary as final_json.txt")
+    with open('final_json.txt', 'w') as f:
+        f.write(json.dumps(FINALJSON, indent=4, sort_keys=True))
+
+
 
 
 def parallelize(type):
@@ -107,62 +202,6 @@ def parallelize(type):
 
 
 
-@parallelize(type='processes')
-def fuzzy_match_P(list_of_kwargs):
-    """ Multiprocessing wrapper for:
-
-    from fuzzywuzzy import process
-    process.extract(query, choices)
-
-    query -> issuer's names from IPOScoop's list.
-    choices -> company names from S1 SEC filings
-
-    Example:
-        qwer = list(sample['coname'])
-        qwer2 = list(sample['gtrends_name'])
-        results = fuzzy_match_P(qwer, qwer2)
-
-    args:
-        issuers: list of firm names to match
-        s1_coname: list of firms names to be matched against.
-    """
-    print('Starting {} _fuzzy_match() processes...'.format(N))
-    with ProcessPoolExecutor(max_workers=N) as exec:
-        # execute subprocess:
-        results = exec.map(_fuzzy_match, list_of_kwargs)
-        flatten = sum(list(results), ())
-        hi_match = sum(flatten[::2], [])
-        lo_match = sum(flatten[1::2], [])
-        return hi_match, lo_match
-def _fuzzy_match(args):
-    enum, issuers, s1_coname = args
-    alphabet = string.ascii_lowercase
-    progbar  = GrepProgressbar(enum+2 , alphabet)
-    hi_match   = []
-    lo_match   = []
-
-    for i, char in enumerate(alphabet):
-        # Narrow down fuzzy match by letter to increase speed
-        char_issuers = [x for x in issuers   if x.lower().startswith(char)]
-        char_conames = [x for x in s1_coname if x.lower().startswith(char)]
-        for issuer in char_issuers:
-            with TermOffset(enum+14):
-                print("Matching: {}{}".format(issuer, ' '*40))
-            match = process.extract(issuer, char_conames)
-            m_name, m_score = match[0][0], match[0][1]
-            if m_score >= 85:
-                hi_match += [(issuer, m_name, m_score)]
-            else:
-                lo_match += [(issuer, m_name, m_score)]
-        progbar.update(i)
-
-    progbar.finish()
-    return hi_match, lo_match
-
-
-
-
-
 
 
 def gtrends_names():
@@ -182,12 +221,6 @@ def gtrends_names():
     old_gdat.index = [str(x) for x in old_gdat.index]
     gset = set(gdat.index)
     gsetold = set(old_gdat.index)
-
-    # list of firms you don't need to gtrend
-    # old_gdat.ix[gset & gsetold]
-
-    # list of firms need to scrape
-    # ciks2= {cik for cik in gset & gsetold if (a(gdat.ix[cik]['date']) - a(old_gdat.ix[cik]['date'])).days > 30}
 
     gdat['gname'] = gdat['coname']
     for cik in gset & gsetold:
@@ -221,6 +254,7 @@ def gtrends_names():
             'Allied World Assurance CO Holdings, AG': 'Allied World Assurance',
             'Ulta Salon, Cosmetics & Fragrance': 'Ulta Beauty',
             'Alpha Natural Resources, Inc./old': 'Alpha Natural Resources',
+
             }
 
     for cik, values in gdat.ix[gset - gsetold].iterrows():
@@ -235,9 +269,55 @@ def gtrends_names():
         gdat.loc[cik, 'gname'] = firm
 
 
+    for cik in newciks:
+        firm = FINALJSON[cik]['Company Overview']['Company Name']
+        for regex in regexes:
+            firm = re.sub(regex, '', firm)
+        firm = ' '.join(capwords(s) if len(s)>3 else s for s in firm.split(' '))
+        print(firm)
+        gdat.loc[cik, 'gname'] = firm
+        gdat.loc[cik, 'cik'] = cik
+        gdat.loc[cik, 'coname'] = firmname(cik)
+        m, d, y = [''.join(s for s in string if s.isdigit())
+                            for string in company.loc[cik, 'Status'].split('/')]
+        m = '0' + m if len(m) == 1 else m
+        d = '0' + d if len(d) == 1 else d
+        gdat.loc[cik, 'date'] = '{m}-{d}-{y}'.format(m=m, d=d, y=y)
+
+
+
+def delete_old_gtrends(L, remove=False):
+    "Finds gtrends files with less than L lines and delets them"
+
+    for ffile in glob(gtdir+'*/*.csv'):
+        lines = sum(1 for line in open(ffile))
+        if lines < L:
+            cik = ffile[-11:-4]
+            if remove:
+                os.remove(ffile)
+            try:
+                ipo_date = company.loc[cik, 'Status']
+                print("{}: {} <{}> lines => {}".format(cik, firmname(cik), ipo_date, lines))
+            except KeyError:
+                pass
+    print("\n Update these files from Gtrends. ")
 
 
 
 
+# ['0'+str(i) if len(str(i))<7 else str(i) for i in gdat.cik]
 
+
+# newnames = {'1580608': "Santander Consumer USA", '1552275': "Susser Petroleum", '1478242': "Quintiles Transnational", '1230276': "Pandora", '1359055': "Buckeye Partners LP", '1103025': "TRX Inc", '1357371': "Breitburn Energy", '1403795': "Nivs Intellimedia", '1524931': "Chuy’s", '1297627': "Spansion", '1364541': "Eagle Rock Energy", '1549848': "Hi Crush Partners", '1415301': "DEL Frisco's Restaurant", '1259515': "Control4", '1362120': "Pinnacle Gas", '1603145': "NextEra Energy Resources", '1286613': "Lincoln Educational", '1601072': "Abengoa", '1586049': "Oxford Immunotec", '1162192': "Avalon Pharma", '1004724': "AdCare Health", '1490165': "Erickson Inc", '1289419': "Morningstar Inc", '1316175': "Anthera Pharmaceuticals", '0054003': "Jorgensen Earle", '1545391': "TCP Lighting", '1526160': "Fleetmatics", '1576044': "QEP Midstream", '1428669': "SolarWinds Inc", '1145197': "Insulet", '1325702': "Magnachip", '1317362': "Shamir Lens", '1403431': "Heritage Crystal Clean", '1437260': "Navios Maritime Holdings", '1324272': "Ruth’s Chris Steak House", '1392091': "SemGroup Energy", '1602367': "First Choice Emergency Room", '1578453': "Dynagas LNG", '1547638': "Stanley Inc", '1487101': "KEYW Corporation", '1405419': "Silver Airways", '1314822': "SES World Skies", '1337117': "Ituran Location and Control", '1408100': "Ion Media Networks", '1441634': "Avago Technologies", '1411579': "AMC Theatres", '1574111': "Propensa", '1367064': "Exterran Holdings", '1302028': "Manitex", '1574596': "The New Home Company", '1383650': "Cheniere Energy Inc", '1428875': "Servicemaster", '1018979': "Amerisafe", '1385544': "Horsehead Corporation", '1356949': "Houston Wire and Cable", '1405197': "Talecris Biotherapeutics", '1401688': "Vitacost", '1122388': "Ellie Mae", '1371782': "MV Oil Trust", '1285701': "MMRGlobal", '1407463': "Pioneer Southwest Energy", '1371455': "Evraz Claymont Steel", '1385613': "Greenlight Capital", '1310114': "ServiceSource", '1337675': "Jazz Semiconductor", '1326200': "Genco ATC", '1585854': "SunEdison", '1341769': "Grubb and Ellis Realty", '1325670': "Sonabank", '0748015': "Sealy Corporation", '1513761': "Norwegian Cruise Line", '1426945': "Echo Global Logistics", '1324410': "Guaranty Bank", '1449488': "compressco", '1402436': "SS&C Technologies", '1555538': "Suncoke Energy", '1335106': "China Shenghuo Pharmaceutical", '1142576': "Optimer Pharmaceuticals", '1125001': "Iomai", '1535929': "Voya Financial", '0890264': "Exa Corporation", '1575828': "Frank’s International", '1354217': "Volcano Corporation", '1421150': "Britannia Bulk", '1552797': "Delek Inc", '1097503': "Navteq", '1246263': "Magellan Midstrean", '1515673': "Ultragenyx", '1381074': "Fuwei Films", '1394074': "Spectra Energy", '1310897': "PanAmSat", '1392380': "Gevo Inc", '1312928': "Kayak Corporation", '1362705': "Constellation Energy", '1582966': "Cheniere Energy", '1584831': "Oxbridge Re", '1602065': "Viper Energy", '1410838': "El Paso Pipeline", '1578318': "Envision Healthcare", '1338613': "Regency Energy", '1411583': "Williams Pipeline", '1237746': "Endurance International Group", '1564180': "Knot Offshore", '1605725': "Vtti Energy", '1604665': "Westlake Chemical Corporation", '0923144': 'Williams Scotsman International', '1230355': 'Baxano Surgical'}
+
+
+# for cik in newnames:
+#     df.loc[cik, 'gtrends_name'] = newnames[cik]
+
+
+# for cik in rmciks:
+#     rmfiles = glob.glob('/Users/peitalin/Dropbox/gtrends-beta/cik-ipo/*/{}.csv'.format(cik))
+#     for ffile in rmfiles:
+#         print(ffile)
+#         os.remove(ffile)
 

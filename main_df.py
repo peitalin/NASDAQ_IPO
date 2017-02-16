@@ -587,112 +587,7 @@ if '__control_variables___':
             """
             average = lambda iterable: np.mean([float(d) for d in iterable])
 
-            ipo_cycles = pd.read_csv("data/IPO_cycles.csv")
-            ipo_cycles['date'] = [arrow.get(d, 'D/MM/YYYY') for d in ipo_cycles['date']]
-            ipo_cycles.set_index('date', inplace=True)
-
-            print("Getting IPO market trends metrics: net_volume, avg_initial_returns, pct_above_midpoint")
-            net_volume = []
-            avg_initial_return = []
-            percent_above_midpoint = []
-            for d in filing_dates:
-                if not d:
-                    net_volume += [None]
-                    avg_initial_return += [None]
-                    percent_above_midpoint += [None]
-                    continue
-
-                date_range = arrow.Arrow.range('month', d.replace(months=(-lag+1)), d)
-
-                net_volume.append(
-                    average(ipo_cycles.loc[d]['net_volume'] for d in date_range))
-
-                avg_initial_return.append(
-                    average(ipo_cycles.loc[d]['avg_1day_return'] for d in date_range))
-
-                percent_above_midpoint.append(
-                    average(ipo_cycles.loc[d]['pct_above_midpoint_price'] for d in date_range))
-
-            return net_volume, avg_initial_return, percent_above_midpoint
-
-
-        filing_dates = []
-        for d in df[date_key]:
-            if isinstance(d, str):
-                filing_dates.append(arrow.get(d, 'YYYY-MM'))
-            elif isinstance(d, datetime.date):
-                filing_dates.append(arrow.get(d.strftime('%Y-%m'), 'YYYY-MM'))
-            elif isinstance(d, arrow.arrow.Arrow):
-                filing_dates.append(d)
-            else:
-                filing_dates.append(None)
-
-        try:
-            cycle_keys = [x for x in df.keys() if x[0].isdigit()]
-            print("Clearing keys: {}".format(cycle_keys))
-            df = df.drop(cycle_keys, axis=1)
-        except ValueError:
-            pass
-
-        df['BAA_yield_changes'] = BAA_yield_spread(filing_dates)
-        df['M{n}_indust_rets'.format(n=lag)] = FF_industry_returns(filing_dates, lag)
-        df['M{n}_IPO_volume'.format(n=lag)], \
-        df['M{n}_initial_returns'.format(n=lag)], \
-        df['M{n}_pct_above_midpoint'.format(n=lag)] = IPO_market_trends(filing_dates, lag)
-
-        return df
-
-
-    def dual_class_shares(df):
-
-        def as_num(string):
-            string = re.sub(r'(,|\s--\s)', '', string)
-            if string:
-                return float(string)
-
-        dual_class_shares = pd.read_excel("data/dualclassIPOs19802014.xls")
-        dual_class_shares.set_index("CUSIP", inplace=True)
-
-        for cik in FINALJSON:
-            shares_nasdaq = as_num(FINALJSON[cik]['Company Overview']['Shares Outstanding'])
-            CUSIP = FINALJSON[cik]['Metadata']['CUSIP']
-            if CUSIP in dual_class_shares.index:
-                if shares_nasdaq != dual_class_shares.loc[CUSIP, "Shares"]:
-                    print('Firm: {} => \n\tNasdaq reports: {} shares\n\tDual Class reports: {} shares'
-                            .format(firmname(cik), shares_nasdaq, dual_class_shares.loc[CUSIP, "Shares"]))
-                df.loc[cik, 'total_dual_class_shares'] = dual_class_shares.loc[CUSIP, "Shares"]
-            else:
-                df.loc[cik, 'total_dual_class_shares'] = shares_nasdaq
-        return df
-
-
-    def share_overhang(df):
-        as_int = lambda s: float(s.replace(',', ''))
-        for cik in df.index:
-            print("Share overhang for: {}".format(cik), end=' '*20+'\r')
-            shares_outstanding = df.loc[cik, 'total_dual_class_shares']
-            shares_offered = FINALJSON[cik]['Company Overview']['Shares Offered']
-
-            if shares_outstanding == ' -- ' or shares_offered == ' -- ':
-                df.loc[cik, 'share_overhang'] = None
-
-            elif shares_outstanding and shares_offered:
-                if isinstance(shares_outstanding, str):
-                    shares_outstanding = as_int(shares_outstanding)
-                if isinstance(shares_offered, str):
-                    shares_offered = as_int(shares_offered)
-                df.loc[cik, 'share_overhang'] =  shares_outstanding / shares_offered
-
-            else:
-                df.loc[cik, 'share_overhang'] = None
-
-        return df
-
-
-    def confidential_IPO(df):
-        "Checks DRS filings for confidential IPOs"
-        print("Reading master.idx for formtypes...")
-        master = pd.read_csv("/Users/peitalin/Data/IPO/NASDAQ/data/master-2005-2014.idx",
+            ipo_cycles = pd.read_csv("/Users/peitalin/Data/IPO/NASDAQ/data/master-2005-2014.idx",
                         encoding='latin-1', iterator=True).read()
         DRS = master[master['Form Type']=='DRS']
         DRS['CIK'] = [str(int(i)) for i in DRS['CIK']]
@@ -841,6 +736,25 @@ def from_FINALJSON_to_df():
     # df.to_csv("df.csv", dtype={"cik": object, 'SIC':object, 'Year':object})
 
 
+def count_S1A_during_roadshow():
+
+    def tailcount(l):
+        if len(l) < 1:
+            return 0
+
+        tail = l[-1]
+        i=0
+        while tail == l.pop():
+            i+=1
+            if len(l) < 1:
+                return i
+        return i
+
+    num_roadshow_S1A = [tailcount([as_cash(x[-1][0]) for x in FINALJSON[cik]['Filing']
+                        if as_cash(x[-1][0])]) for cik in ciks]
+    df['num_roadshow_S1A'] = num_roadshow_S1A
+    df.to_csv("df.csv", dtype={"cik": object, 'SIC':object, 'Year':object})
+
 
 
 if '__Attention_variables__':
@@ -901,7 +815,10 @@ if '__Attention_variables__':
             elif event=='listing':
                 end_date = trade_date.replace(days=1)
 
-            elif event!='listing':
+            elif event=='postlisting':
+                end_date = trade_date.replace(days=15)
+
+            else:
                 if firm['days_to_first_price_update'] < firm['days_to_final_price_revision']:
                     end_date = start_date.replace(days=firm['days_to_first_price_update'])
                 elif not np.isnan(firm['days_to_final_price_revision']):
@@ -957,15 +874,18 @@ if '__Attention_variables__':
 
             iot = rolling_attention(iot, window=15)
             iot = rolling_attention(iot, window=30)
-            iot = rolling_attention(iot, window=60)
+            # iot = rolling_attention(iot, window=60)
 
-            end_date = get_end_date(cik, event=event)
-            df.loc[cik, 'gtrends_name'] = firm
-            df.loc[cik, 'IoT_entity_type'] = get_entity_type(iot_raw_data, df)
+            try:
+                end_date = get_end_date(cik, event=event)
+                df.loc[cik, 'gtrends_name'] = firm
+                df.loc[cik, 'IoT_entity_type'] = get_entity_type(iot_raw_data, df)
 
-            df.loc[cik, 'IoT_15day_CASI_%s' % category] = iot['15day_CASI'].loc[end_date]
-            df.loc[cik, 'IoT_30day_CASI_%s' % category] = iot['30day_CASI'].loc[end_date]
-            df.loc[cik, 'IoT_60day_CASI_%s' % category] = iot['60day_CASI'].loc[end_date]
+                df.loc[cik, 'IoT_15day_CASI_%s' % category] = iot['15day_CASI'].loc[end_date]
+                df.loc[cik, 'IoT_30day_CASI_%s' % category] = iot['30day_CASI'].loc[end_date]
+                # df.loc[cik, 'IoT_60day_CASI_%s' % category] = iot['60day_CASI'].loc[end_date]
+            except:
+                raise(KeyError("cik: {}".format(cik)))
             if makedir:
                 make_dir(cik, category)
 
@@ -1026,7 +946,7 @@ if '__Attention_variables__':
         cik = str(cik) if not isinstance(cik, str) else cik
         cik = get_cik(cik) if not cik.isdigit() else cik
         # colors = [rgb_to_hex(c) for c in sb.color_palette("colorblind")]
-        colors = ['#0072b2', '#009e73', '#d55e00', '#cc79a7', '#f0e442', '#56b4e9']
+        colors = ['#0072b2', '#009e73', '#e58e20', '#cc79a7', '#f0e442', '#56b4e9']
 
 
         if category == '':
@@ -1043,6 +963,8 @@ if '__Attention_variables__':
 
 
         iot_data = pd.read_csv(gtrends_file(cik=cik, category=category))
+        iot_data = iot_data[240:-360]
+
         firm = iot_data.columns[1]
         iot_data['Date'] = [arrow.get(d).date() for d in iot_data['Date']]
         # iot_melt = pd.melt(iot_data.icol([0,1]), id_vars=['Date'])
@@ -1052,7 +974,7 @@ if '__Attention_variables__':
         s1_date = arrow.get(df.loc[cik, 'date_s1_filing']).date()
         anno_index1 = iot_data[iot_data.Date == s1_date].index[0]
 
-        roadshow_date = arrow.get(df.loc[cik, 'date_1st_pricing']).date()
+        roadshow_date = arrow.get(df.loc[cik, 'date_1st_pricing']).replace(days=-7).date()
         anno_index2 = iot_data[iot_data.Date == roadshow_date].index[0]
 
         date_listed = arrow.get(df.loc[cik, 'date_trading']).date()
@@ -1063,24 +985,24 @@ if '__Attention_variables__':
         ax.plot(iot_data["Date"], iot_data[firm], label='Search Interest: {} ({})'.format(firm, iot_data.columns[2]))
         ax.annotate('S-1 Filing',
                     (mdates.date2num(iot_data.Date[anno_index1]), iot_data[firm][anno_index1]),
-                    xytext=(20, 20),
-                    size=11,
+                    xytext=(40, 40),
+                    size=12,
                     color=colors[2],
                     textcoords='offset points',
                     arrowprops=dict(width=1.5, headwidth=5, shrink=0.1, color=colors[2]))
 
         ax.annotate('Roadshow Begins',
                     (mdates.date2num(iot_data.Date[anno_index2]), iot_data[firm][anno_index2]),
-                    xytext=(15, 15),
-                    size=11,
+                    xytext=(-120, 40),
+                    size=12,
                     color=colors[2],
                     textcoords='offset points',
                     arrowprops=dict(width=1.5, headwidth=5, shrink=0.1, color=colors[2]))
 
         ax.annotate('IPO Listing Date',
                     (mdates.date2num(iot_data.Date[anno_index3]), iot_data[firm][anno_index3]),
-                    xytext=(20, 20),
-                    size=11,
+                    xytext=(-120, -50),
+                    size=12,
                     color=colors[2],
                     textcoords='offset points',
                     arrowprops=dict(width=1.5, headwidth=5, shrink=0.1, color=colors[2]))
@@ -1180,11 +1102,11 @@ def process_IOT_variables():
 
 
 
-    ### Attention until close return
+    ### Attention post-listing, in 2 weeks after listing.
     dfl = df
-    dfl = attention_measures(dfl, 'all', event='listing')
-    dfl = attention_measures(dfl, 'finance', event='listing')
-    dfl = attention_measures(dfl, 'business_industrial', event='listing')
+    dfl = attention_measures(dfl, 'all', event='postlisting')
+    dfl = attention_measures(dfl, 'finance', event='postlisting')
+    dfl = attention_measures(dfl, 'business_industrial', event='postlisting')
 
     dfl = weighted_iot(dfl, window=15, weighting='equal')
     dfl = weighted_iot(dfl, window=30, weighting='equal')
@@ -1209,10 +1131,39 @@ def uw_syndicate(experts):
 
     df['underwriter_syndicate_size'] = syndicate
 
+    df.to_csv("df.csv", dtype={"cik": object, 'SIC':object, 'Year':object})
 
 
 
+def original_prange(ciks):
 
+    pranges = []
+    prange_pct_changes = []
+    for cik in ciks:
+        try:
+            prange01 = [x[-1] for x in FINALJSON[cik]['Filing'] if len(x[-1]) > 1]
+            prange01 = [x for x in prange01 if '$' not in x]
+            prange0 = [as_cash(x) for x in prange01[-1]]
+            for prange in prange01[::-1]:
+                prange1 = [as_cash(x) for x in prange]
+                if prange1 != prange0:
+                    print("{} -> {}".format(prange0, prange1))
+                    prange_pct_change = ((max(prange1) - min(prange1))/(max(prange0) - min(prange0)) - 1)* 100
+                    break
+            else:
+                prange1 = None
+                prange_pct_change = -100
+        except:
+            print("cik:{} has no prange0".format(cik))
+            prange0 = ('NA')
+            prange_pct_change = ('NA')
+        pranges.append(prange0)
+        prange_pct_changes.append(prange_pct_change)
+
+    df['original_prange'] = pranges
+    df['prange_change_pct'] = prange_pct_changes
+
+    df.to_csv("df.csv", dtype={"cik": object, 'SIC':object, 'Year':object})
 
 
 
@@ -1241,7 +1192,7 @@ if __name__=='__main__':
     cik = '1500435' # GoPro         # 8.1
     cik = '1318605' # Tesla Motors  # 8
     cik = '1326801' # Facebook      # 8.65
-    cik = '1564902' # SeaWorld      # 9.54
+    ciksea = '1564902' # SeaWorld      # 9.54
     cikfb = '1326801' # Facebook
     ciks1 = ['1439404', '1418091', '1271024', '1500435', '1318605', '1594109', '1326801', '1564902']
     iotkeys = ['gtrends_name', 'IoT_entity_type',
@@ -1251,5 +1202,5 @@ if __name__=='__main__':
     'IoT_60day_CASI_business_industrial','IoT_15day_CASI_weighted_finance',
     'IoT_30day_CASI_weighted_finance', 'IoT_60day_CASI_weighted_finance']
 
-
+    # len(df[(df.prange_change_pct != 'NA') & (df.delay_in_price_update<1)].prange_change_pct)
 

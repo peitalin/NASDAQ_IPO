@@ -51,6 +51,7 @@ def merge_Compustat_FINALJSON(FULLJSON=FULLJSON, compustat_file="/data/Compustat
     not_first_offer = []
     ciks = list(set(Compustat.index))
     for cik in ciks:
+        print("Merging compustat data for {}".format(cik), end='\r')
         if cik not in FULLJSON.keys():
             continue
 
@@ -272,12 +273,29 @@ if __name__=='__main__':
 
     ######## NEW BAD INDUSTRIES ######################################
     bad_sic = [
-        '6021', '6022', '6035', '6036', '6111', '6199', '6153',
-        '6159', '6162', '6163', '6172', '6189', '6200', '6022',
-        '6221', '6770', '6792', '6794', '6795', '6798', '6799',
+        '6021', '6022', '6035', '6036', '6111', '6199',
+        '6159', '6162', '6163', '6172', '6189', '6022',
+        '6770', '6792', '6794', '6795', '6798', '6799',
         '8880', '8888', '9721', '9995'
         ]
     # {cik:firmname(cik) for cik in FINALJSON if FINALJSON[cik]['Metadata']['SIC'] == '6021'}
     # FINALJSON = {cik:vals for cik,vals in FINALJSON.items()
     #              if vals['Metadata']['SIC'] not in bad_sic}
     ###################################################################
+
+
+
+def get_volatility(days=10)
+    df = pd.read_csv("df.csv", dtype={'cik':object, 'Year':object, 'SIC':object})
+    df.set_index('cik', inplace=True)
+    FINALJSON = json.loads(open('final_json.txt').read())
+    import numpy as np
+
+    vol = []
+    for cik in df.index:
+        v = np.std([float(x) for x in cc[cc.index == cik]['Close'][:days]])
+        vol.append(v)
+        print(cik)
+
+    df['stddev_prices_5day'] = vol
+    df.to_csv("df.csv", dtype={"cik": object, 'SIC':object, 'Year':object})
