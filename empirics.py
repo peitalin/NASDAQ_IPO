@@ -111,8 +111,8 @@ VNAME = {
     'np.square(CASI)': 'CASI^2',
     'I(CASI^2)': 'CASI^2',
     'foreign': 'foreign',
-    'media_listing': 'Media Count',
-    'media_1st_pricing': 'Media Count'
+    'media_listing': 'log(1 + Media Count)',
+    'media_1st_pricing': 'log(1 + Media Count)'
 }
 
 
@@ -150,6 +150,8 @@ if __name__=='__main__':
     df['log(proceeds)'] = log(df['proceeds'])
     df['log(1 + sales)'] = log(1+df['sales'])
     df['CASI'] = df['IoT_15day_CASI_weighted_finance']
+    df['media_listing'] = log(1 + df['media_listing'])
+    df['media_1st_pricing'] = log(1 + df['media_1st_pricing'])
 
     dup = df[df['size_of_first_price_update'].notnull()]
     dnone = df[df['prange_change_first_price_update'].isnull()]
@@ -482,15 +484,18 @@ def OLS_final_revisions(days=15):
         dfR$priceupdate_down <- dfR$priceupdate_down - mean(dfR$priceupdate_down)
 
         # Partialling out media_listing effect on IOT
+        dfR$media_listing <- log(1 + dfR$media_listing)
+        dfR$media_1st_pricing <- log(1 + dfR$media_1st_pricing)
+
         # Regress IOT ~ media_listing and take residuals to use in regression
-        dfR$IoT_15day_CASI_weighted_finance <- lm(dfR$IoT_15day_CASI_weighted_finance ~ dfR$media_listing )$residuals
-        dfR$IoT_30day_CASI_weighted_finance <- lm(dfR$IoT_30day_CASI_weighted_finance ~ dfR$media_listing )$residuals
+        dfR$IoT_15day_CASI_weighted_finance <- lm(dfR$IoT_15day_CASI_weighted_finance ~ dfR$media_1st_pricing )$residuals
+        dfR$IoT_30day_CASI_weighted_finance <- lm(dfR$IoT_30day_CASI_weighted_finance ~ dfR$media_1st_pricing )$residuals
 
-        dfR$IoT_15day_CASI_all <- lm(dfR$IoT_15day_CASI_all ~ dfR$media_listing )$residuals
-        dfR$IoT_30day_CASI_all <- lm(dfR$IoT_30day_CASI_all ~ dfR$media_listing )$residuals
+        dfR$IoT_15day_CASI_all <- lm(dfR$IoT_15day_CASI_all ~ dfR$media_1st_pricing )$residuals
+        dfR$IoT_30day_CASI_all <- lm(dfR$IoT_30day_CASI_all ~ dfR$media_1st_pricing )$residuals
 
-        dfR$IoT_15day_CASI_news <- lm(dfR$IoT_15day_CASI_news ~ dfR$media_listing )$residuals
-        dfR$IoT_30day_CASI_news <- lm(dfR$IoT_30day_CASI_news ~ dfR$media_listing )$residuals
+        dfR$IoT_15day_CASI_news <- lm(dfR$IoT_15day_CASI_news ~ dfR$media_1st_pricing )$residuals
+        dfR$IoT_30day_CASI_news <- lm(dfR$IoT_30day_CASI_news ~ dfR$media_1st_pricing )$residuals
 
         """.split('\n')))
 
@@ -663,15 +668,18 @@ def OLS_initial_returns():
         dfR$pct_final_revision_down <- dfR$pct_final_revision_down - mean(dfR$pct_final_revision_down)
 
         # Partialling out media_listing effect on IOT
+        dfR$media_listing <- log(1 + dfR$media_listing)
+        dfR$media_1st_pricing <- log(1 + dfR$media_1st_pricing)
+
         # Regress IOT ~ media_listing and take residuals to use in regression
-        dfR$IoT_15day_CASI_weighted_finance <- lm(dfR$IoT_15day_CASI_weighted_finance ~ dfR$media_listing )$residuals
-        dfR$IoT_30day_CASI_weighted_finance <- lm(dfR$IoT_30day_CASI_weighted_finance ~ dfR$media_listing )$residuals
+        dfR$IoT_15day_CASI_weighted_finance <- lm(dfR$IoT_15day_CASI_weighted_finance ~ dfR$media_1st_pricing )$residuals
+        dfR$IoT_30day_CASI_weighted_finance <- lm(dfR$IoT_30day_CASI_weighted_finance ~ dfR$media_1st_pricing )$residuals
 
-        dfR$IoT_15day_CASI_all <- lm(dfR$IoT_15day_CASI_all ~ dfR$media_listing )$residuals
-        dfR$IoT_30day_CASI_all <- lm(dfR$IoT_30day_CASI_all ~ dfR$media_listing )$residuals
+        dfR$IoT_15day_CASI_all <- lm(dfR$IoT_15day_CASI_all ~ dfR$media_1st_pricing )$residuals
+        dfR$IoT_30day_CASI_all <- lm(dfR$IoT_30day_CASI_all ~ dfR$media_1st_pricing )$residuals
 
-        dfR$IoT_15day_CASI_news <- lm(dfR$IoT_15day_CASI_news ~ dfR$media_listing )$residuals
-        dfR$IoT_30day_CASI_news <- lm(dfR$IoT_30day_CASI_news ~ dfR$media_listing )$residuals
+        dfR$IoT_15day_CASI_news <- lm(dfR$IoT_15day_CASI_news ~ dfR$media_1st_pricing )$residuals
+        dfR$IoT_30day_CASI_news <- lm(dfR$IoT_30day_CASI_news ~ dfR$media_1st_pricing )$residuals
 
         ##""".split('\n')))
 
@@ -847,6 +855,9 @@ def OLS_initial_volatility():
         dfR$pct_final_revision_down <- dfR$pct_final_revision_down - mean(dfR$pct_final_revision_down)
 
         # Partialling out media_listing effect on IOT
+        dfR$media_listing <- log(1 + dfR$media_listing)
+        dfR$media_1st_pricing <- log(1 + dfR$media_1st_pricing)
+
         # Regress IOT ~ media_listing and take residuals to use in regression
         dfR$IoT_15day_CASI_weighted_finance <- lm(dfR$IoT_15day_CASI_weighted_finance ~ dfR$media_listing )$residuals
         dfR$IoT_30day_CASI_weighted_finance <- lm(dfR$IoT_30day_CASI_weighted_finance ~ dfR$media_listing )$residuals
@@ -994,15 +1005,18 @@ def HLM_initial_returns():
         dfR$pct_final_revision_down <- dfR$pct_final_revision_down - mean(dfR$pct_final_revision_down)
 
         # Partialling out media_listing effect on IOT
+        dfR$media_listing <- log(1 + dfR$media_listing)
+        dfR$media_1st_pricing <- log(1 + dfR$media_1st_pricing)
+
         # Regress IOT ~ media_listing and take residuals to use in regression
-        dfR$IoT_15day_CASI_weighted_finance <- lm(dfR$IoT_15day_CASI_weighted_finance ~ dfR$media_listing )$residuals
-        dfR$IoT_30day_CASI_weighted_finance <- lm(dfR$IoT_30day_CASI_weighted_finance ~ dfR$media_listing )$residuals
+        dfR$IoT_15day_CASI_weighted_finance <- lm(dfR$IoT_15day_CASI_weighted_finance ~ dfR$media_1st_pricing )$residuals
+        dfR$IoT_30day_CASI_weighted_finance <- lm(dfR$IoT_30day_CASI_weighted_finance ~ dfR$media_1st_pricing )$residuals
 
-        dfR$IoT_15day_CASI_all <- lm(dfR$IoT_15day_CASI_all ~ dfR$media_listing )$residuals
-        dfR$IoT_30day_CASI_all <- lm(dfR$IoT_30day_CASI_all ~ dfR$media_listing )$residuals
+        dfR$IoT_15day_CASI_all <- lm(dfR$IoT_15day_CASI_all ~ dfR$media_1st_pricing )$residuals
+        dfR$IoT_30day_CASI_all <- lm(dfR$IoT_30day_CASI_all ~ dfR$media_1st_pricing )$residuals
 
-        dfR$IoT_15day_CASI_news <- lm(dfR$IoT_15day_CASI_news ~ dfR$media_listing )$residuals
-        dfR$IoT_30day_CASI_news <- lm(dfR$IoT_30day_CASI_news ~ dfR$media_listing )$residuals
+        dfR$IoT_15day_CASI_news <- lm(dfR$IoT_15day_CASI_news ~ dfR$media_1st_pricing )$residuals
+        dfR$IoT_30day_CASI_news <- lm(dfR$IoT_30day_CASI_news ~ dfR$media_1st_pricing )$residuals
 
         ##""".split('\n')))
 
